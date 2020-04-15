@@ -20,6 +20,20 @@ int
 main(void)
 {
   printf("\n");
+  assert_match("a?", "c", true);
+  assert_match("ab?c", "cb", false);
+  assert_match("ab?", "a", true);
+  assert_match("ab?", "abc", true);
+  assert_match("ab?c", "abc", true);
+  assert_match("a?b?c?", "abc", true);
+  assert_match("a?b?c?", "bc", true);
+  assert_match("a?b?c?", "c", true);
+  assert_match("a?b?c?", "ac", true);
+  assert_match("a?b?c?", "a", true);
+  assert_match("a?b?c?", "ab", true);
+  assert_match("a?b?c?", "", true);
+  assert_match("a.?c", "abc", true);
+  assert_match("a.?c", "ac", true);
   assert_match("ab", "abc", true);
   assert_match("ab", "zabc", true);
   assert_match("ab", "zab", true);
@@ -38,6 +52,7 @@ main(void)
   assert_match("^ab*c$", "abc", true);
   assert_match("^ab*c$", "abbbbbbc", true);
   assert_match(".", "a", true);
+  assert_match("..", "a", false);
   assert_match(".*", "aaaaaa", true);
  // assert_match("", "", true);
   printf("\n");

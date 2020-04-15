@@ -1,6 +1,20 @@
 #include "regex_light.h"
 
 int matchstar(int c, char *regexp, char *text);
+int matchhere(char *regexp, char *text);
+
+int
+matchone(int p, int c)
+{
+  if (p == '.') return 1;
+  return (p == c);
+}
+
+int
+matchquestion(char *regexp, char *text)
+{
+  return (matchone(regexp[0], text[0]) && match(regexp + 2, text + 1)) || match(regexp + 2, text);
+}
 
 /* matchhere: search for regexp at beginning of text */
 int
@@ -8,6 +22,8 @@ matchhere(char *regexp, char *text)
 {
   if (regexp[0] == '\0')
     return 1;
+  if (regexp[1] == '?')
+    return matchquestion(regexp, text);
   if (regexp[1] == '*')
     return matchstar(regexp[0], regexp + 2, text);
   if (regexp[0] == '$' && regexp[1] == '\0')
