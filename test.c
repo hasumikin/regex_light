@@ -20,6 +20,18 @@ int
 main(void)
 {
   printf("\n");
+  assert_match("a+b*c+", "abc", true);
+  assert_match("a+b*c+", "ac", true);
+  assert_match("a+b*c+", "bc", false);
+  assert_match(".+", "a", true);
+  assert_match(".+", "aa", true);
+  assert_match("a+", "", false);
+  assert_match("a+", "a", true);
+  assert_match("a+", "aaaa", true);
+  assert_match("a+", "", false);
+  assert_match("ab+c", "abbc", true);
+  assert_match("ab+c", "ac", false);
+  assert_match("aa+", "a", false);
   assert_match("a?", "c", true);
   assert_match("ab?c", "cb", false);
   assert_match("ab?", "a", true);
@@ -40,6 +52,7 @@ main(void)
   assert_match("^ab", "abc", true);
   assert_match("^ab", "jc", false);
   assert_match("a$", "abca", true);
+  assert_match("a*", "", true);
   assert_match("a*", "bd", true);
   assert_match("a*", "bad", true);
   assert_match("a*", "baad", true);
