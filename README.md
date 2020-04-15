@@ -1,18 +1,18 @@
 ## Regex Light
 
-### $Lang only
+### $Lang
 - C.ASCII
 
-### Types only
+### Types
 - regex_t
 - regmatch_t
 
-### Functions only
+### Functions
 - regcomp() # the 3rd arg will be ignored
 - regexec()
 - regfree()
 
-### Expressions only
+### Expressions
 - any literal charactor
 - `.` ... any single charactor
 - `^` ... beginning of the input
@@ -22,6 +22,7 @@
 - `?` ... zero or one of previous charactor
 - `[-]` ... specified charactors, between the two charactors
 - `()` ... group for backward reference. subsequent repetitive expressions like `*` are not supported
+- `\.` `\^` `\$` `\*` `\+` `\?` `\[` `\(` ... escape special charactors treating them literals
 
 ### [TBD] Expressions possibly
 - `(|)` ... group OR group
