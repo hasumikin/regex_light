@@ -27,11 +27,11 @@ typedef struct re_atom {
   regex_t *child;       // use only if type == RE_TYPE_PAREN
 } ReAtom;
 
-static int match(ReAtom *regexp, const char *text);
-static int matchstar(ReAtom c, ReAtom *regexp, const char *text);
-static int matchhere(ReAtom *regexp, const char *text);
+static int match(ReAtom **regexp, const char *text);
+static int matchstar(ReAtom c, ReAtom **regexp, const char *text);
+static int matchhere(ReAtom **regexp, const char *text);
 static int matchone(ReAtom p, int c);
-static int matchquestion(ReAtom *regexp, const char *text);
+static int matchquestion(ReAtom **regexp, const char *text);
 
 static int
 matchone(ReAtom p, int c)
@@ -41,33 +41,33 @@ matchone(ReAtom p, int c)
 }
 
 static int
-matchquestion(ReAtom *regexp, const char *text)
+matchquestion(ReAtom **regexp, const char *text)
 {
-  return (matchone(regexp[0], text[0]) && match((regexp + 2), text + 1)) || match((regexp + 2), text);
+  return (matchone(*regexp[0], text[0]) && match((regexp + 2), text + 1)) || match((regexp + 2), text);
 }
 
 /* matchhere: search for regexp at beginning of text */
 static int
-matchhere(ReAtom *regexp, const char *text)
+matchhere(ReAtom **regexp, const char *text)
 {
-  if (regexp->type == RE_TYPE_TERM)
+  if (regexp[0]->type == RE_TYPE_TERM)
     return 1;
-  if ((regexp + 1)->type == RE_TYPE_QUESTION)
+  if ((regexp + 1)[0]->type == RE_TYPE_QUESTION)
     return matchquestion(regexp, text);
-  if ((regexp + 1)->type == RE_TYPE_STAR)
-    return matchstar(regexp[0], (regexp + 2), text);
-  if ((regexp + 1)->type == RE_TYPE_PLUS)
-    return matchone(regexp[0], text[0]) && matchstar(regexp[0], (regexp + 2), text + 1);
-  if (regexp->type == RE_TYPE_END && (regexp + 1)->type == RE_TYPE_TERM)
+  if ((regexp + 1)[0]->type == RE_TYPE_STAR)
+    return matchstar(*regexp[0], (regexp + 2), text);
+  if ((regexp + 1)[0]->type == RE_TYPE_PLUS)
+    return matchone(*regexp[0], text[0]) && matchstar(*regexp[0], (regexp + 2), text + 1);
+  if (regexp[0]->type == RE_TYPE_END && (regexp + 1)[0]->type == RE_TYPE_TERM)
     return *text == '\0';
-  if (*text != '\0' && (regexp->type == RE_TYPE_DOT || (regexp->type == RE_TYPE_LIT && regexp->ch == *text)))
+  if (*text != '\0' && (regexp[0]->type == RE_TYPE_DOT || (regexp[0]->type == RE_TYPE_LIT && regexp[0]->ch == *text)))
     return matchhere((regexp + 1), text + 1);
   return 0;
 }
 
 /* matchstar: search for c*regexp at beginning of text */
 static int
-matchstar(ReAtom c, ReAtom *regexp, const char *text)
+matchstar(ReAtom c, ReAtom **regexp, const char *text)
 {
   char *t;
   for (t = (char *)text;
@@ -91,9 +91,9 @@ static ReAtom
 
 /* match: search for regexp anywhere in text */
 static int
-match(ReAtom *regexp, const char *text)
+match(ReAtom **regexp, const char *text)
 {
-  if (regexp->type == RE_TYPE_BEGIN)
+  if (regexp[0]->type == RE_TYPE_BEGIN)
     return matchhere((regexp + 1), text);
   do {    /* must look even if string is empty */
     if (matchhere(regexp, text))
@@ -107,7 +107,7 @@ match(ReAtom *regexp, const char *text)
 int
 regexec(regex_t *preg, const char *text, size_t nmatch, regmatch_t pmatch[], int _eflags)
 {
-  return match(preg->atoms[0], text);
+  return match(preg->atoms, text);
 }
 
 /*
