@@ -152,6 +152,15 @@ regcomp(regex_t *preg, const char *pattern, int _cflags)
         regcomp(new_preg, pattern + i + 1, _cflags);
         i++; // ')'
         break;
+      case '\\':
+        i++;
+        preg->atoms[j] = re_atom_new(RE_TYPE_LIT);
+        if (pattern[i] == '\0') {
+          preg->atoms[j]->ch = '\\';
+        } else {
+          preg->atoms[j]->ch = pattern[i];
+        }
+        break;
       default:
         preg->atoms[j] = re_atom_new(RE_TYPE_LIT);
         preg->atoms[j]->ch = c;

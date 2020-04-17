@@ -77,6 +77,17 @@ main(void)
   assert_match(".", "a", true);
   assert_match("..", "a", false);
   assert_match(".*", "aaaaaa", true);
+  assert_match("\\\\", "\\", true);
+  assert_match("\\(", "(", true);
+  assert_match("\\[", "[", true);
+  assert_match("\\$", "$", true);
+  assert_match("\\^", "^", true);
+  assert_match("\\.", ".", true);
+  assert_match("\\+", "+", true);
+  assert_match("a\\*z", "a*z", true);
+  assert_match("a\\?z", "a?z", true);
+  assert_match("a\\?z", "az", false);
+  assert_match("a\\", "a\\", true);
  // assert_match("", "", true);
   printf("\n");
   return 0;
