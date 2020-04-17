@@ -22,5 +22,8 @@ host_product:
 assert:
 	./test_h_d
 
+gdb:
+	gdb ./test_h_d
+
 clean:
 	rm test

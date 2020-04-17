@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <string.h>
 #include "regex_light.h"
 
 typedef enum {
@@ -32,11 +33,14 @@ static int matchstar(ReAtom c, ReAtom **regexp, const char *text);
 static int matchhere(ReAtom **regexp, const char *text);
 static int matchone(ReAtom p, int c);
 static int matchquestion(ReAtom **regexp, const char *text);
+static int matchchars(const unsigned char *s, char c);
+static int matchbetween(const unsigned char *s, char c);
 
 static int
 matchone(ReAtom p, int c)
 {
   if (p.type == RE_TYPE_DOT) return 1;
+  if (p.type == RE_TYPE_BRACKET) return matchchars(p.ccl, c);
   return (p.ch == c); // TODO make sure it is RE_TYPE_LIT
 }
 
@@ -50,18 +54,20 @@ matchquestion(ReAtom **regexp, const char *text)
 static int
 matchhere(ReAtom **regexp, const char *text)
 {
-  if (regexp[0]->type == RE_TYPE_TERM)
-    return 1;
-  if ((regexp + 1)[0]->type == RE_TYPE_QUESTION)
-    return matchquestion(regexp, text);
-  if ((regexp + 1)[0]->type == RE_TYPE_STAR)
-    return matchstar(*regexp[0], (regexp + 2), text);
-  if ((regexp + 1)[0]->type == RE_TYPE_PLUS)
-    return matchone(*regexp[0], text[0]) && matchstar(*regexp[0], (regexp + 2), text + 1);
-  if (regexp[0]->type == RE_TYPE_END && (regexp + 1)[0]->type == RE_TYPE_TERM)
-    return *text == '\0';
-  if (*text != '\0' && (regexp[0]->type == RE_TYPE_DOT || (regexp[0]->type == RE_TYPE_LIT && regexp[0]->ch == *text)))
-    return matchhere((regexp + 1), text + 1);
+  do {
+    if (regexp[0]->type == RE_TYPE_TERM)
+      return 1;
+    if ((regexp + 1)[0]->type == RE_TYPE_QUESTION)
+      return matchquestion(regexp, text);
+    if ((regexp + 1)[0]->type == RE_TYPE_STAR)
+      return matchstar(*regexp[0], (regexp + 2), text);
+    if ((regexp + 1)[0]->type == RE_TYPE_PLUS)
+      return matchone(*regexp[0], text[0]) && matchstar(*regexp[0], (regexp + 2), text + 1);
+    if (regexp[0]->type == RE_TYPE_END && (regexp + 1)[0]->type == RE_TYPE_TERM)
+      return *text == '\0';
+    if (*text != '\0' && (regexp[0]->type == RE_TYPE_DOT || (regexp[0]->type == RE_TYPE_LIT && regexp[0]->ch == *text)))
+      return matchhere((regexp + 1), text + 1);
+  } while (text[0] != '\0' && matchone(**regexp++, *text++));
   return 0;
 }
 
@@ -87,6 +93,35 @@ static ReAtom
   ReAtom *atom = malloc(sizeof(ReAtom));
   atom->type = type;
   return atom;
+}
+
+static int matchbetween(const unsigned char* s, char c)
+{
+  return ((c != '-') && (s[0] != '\0') && (s[0] != '-') &&
+         (s[1] == '-') && (s[1] != '\0') &&
+         (s[2] != '\0') && ((c >= s[0]) && (c <= s[2])));
+}
+
+static int matchchars(const unsigned char* s, char c)
+{
+  do {
+    if (matchbetween(s, c)) {
+      return 1;
+    } else if (s[0] == '\\') {
+      /* Escape-char: increment str-ptr and match on next char */
+      s += 1;
+      if ((c == s[0])) {
+        return 1;
+      }
+    } else if (c == s[0]) {
+      if (c == '-') {
+        return ((s[-1] == '\0') || (s[1] == '\0'));
+      } else {
+        return 1;
+      }
+    }
+  } while (*s++ != '\0');
+  return 0;
 }
 
 /* match: search for regexp anywhere in text */
@@ -153,13 +188,25 @@ regcomp(regex_t *preg, const char *pattern, int _cflags)
         i++; // ')'
         break;
       case '\\':
-        i++;
         preg->atoms[j] = re_atom_new(RE_TYPE_LIT);
-        if (pattern[i] == '\0') {
+        if (pattern[i + 1] == '\0') {
           preg->atoms[j]->ch = '\\';
         } else {
+          i++;
           preg->atoms[j]->ch = pattern[i];
         }
+        break;
+      case '[':
+        i++;
+        int len;
+        for (len = 0; pattern[i + len] != '\0' && pattern[i + len] != ']'; len++)
+          ;
+        unsigned char *ccl = malloc(len + 1);
+        memcpy((char *)ccl, pattern + i, len);
+        ccl[len] = '\0';
+        preg->atoms[j] = re_atom_new(RE_TYPE_BRACKET);
+        preg->atoms[j]->ccl = ccl;
+        i += len;
         break;
       default:
         preg->atoms[j] = re_atom_new(RE_TYPE_LIT);

@@ -77,17 +77,34 @@ main(void)
   assert_match(".", "a", true);
   assert_match("..", "a", false);
   assert_match(".*", "aaaaaa", true);
-  assert_match("\\\\", "\\", true);
-  assert_match("\\(", "(", true);
-  assert_match("\\[", "[", true);
-  assert_match("\\$", "$", true);
-  assert_match("\\^", "^", true);
-  assert_match("\\.", ".", true);
-  assert_match("\\+", "+", true);
-  assert_match("a\\*z", "a*z", true);
-  assert_match("a\\?z", "a?z", true);
-  assert_match("a\\?z", "az", false);
-  assert_match("a\\", "a\\", true);
+  { /* escape special charactor */
+    assert_match("\\\\", "\\", true);
+    assert_match("\\(", "(", true);
+    assert_match("\\[", "[", true);
+    assert_match("\\$", "$", true);
+    assert_match("\\^", "^", true);
+    assert_match("\\.", ".", true);
+    assert_match("\\+", "+", true);
+    assert_match("a\\*z", "a*z", true);
+    assert_match("a\\?z", "a?z", true);
+    assert_match("a\\?z", "az", false);
+    assert_match("a\\", "a\\", true);
+  }
+  { /* [ ] */
+    assert_match("[abc]", "a", true);
+    assert_match("[abc]d", "a", false);
+    assert_match("[abc]", "b", true);
+    assert_match("[abc]", "c", true);
+    assert_match("[a-z]", "a", true);
+    assert_match("[a-z]", "r", true);
+    assert_match("[a-z]", "z", true);
+    assert_match("[a-z]", "A", false);
+    assert_match("[a-zABC0-9]", "A", true);
+    assert_match("[a-zABC0-9]", "D", false);
+    assert_match("[a-]", "-", true);
+    assert_match("z[0-9]a", "6z8a9", true);
+    assert_match("z[0-9]+a", "z1508a9", false);
+  }
  // assert_match("", "", true);
   printf("\n");
   return 0;
