@@ -3,7 +3,7 @@
 
 #include <stddef.h>
 
-#define MAX_ATOM_SIZE 10
+#define MAX_ATOM_SIZE 100
 
 typedef struct re_atom ReAtom;
 
