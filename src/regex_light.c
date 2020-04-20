@@ -12,7 +12,6 @@ typedef enum {
   RE_TYPE_BEGIN,    // ^
   RE_TYPE_END,      // $
   RE_TYPE_BRACKET,  // [ ]
-//  RE_TYPE_PAREN,    // ( )
   RE_TYPE_LPAREN,   // (
   RE_TYPE_RPAREN,   // )
 } ReType;
@@ -26,7 +25,6 @@ typedef struct re_atom {
     unsigned char ch;   // literal in RE_TYPE_LIT
     unsigned char *ccl; // pointer to content in [ ] RE_TYPE_BRACKET
   };
-  regex_t *child;       // use only if type == RE_TYPE_PAREN
 } ReAtom;
 
 static int match(ReAtom **regexp, const char *text);
@@ -83,12 +81,6 @@ matchone(ReAtom p, const char *text)
   if ((p.type == RE_TYPE_LIT && p.ch == *text) || (p.type == RE_TYPE_DOT))
     REPORT;
   if (p.type == RE_TYPE_BRACKET) return matchchars(p.ccl, text);
-//  if (p.type == RE_TYPE_PAREN) {
-//    rs.current_re_nsub++;
-//    int res = match(p.child->atoms, text);
-//    rs.current_re_nsub--;
-//    return res;
-//  }
   return 0;
 }
 
@@ -246,21 +238,12 @@ regcomp(regex_t *preg, const char *pattern, int _cflags)
         preg->atoms[j] = re_atom_new(RE_TYPE_END);
         break;
       case '(':
-//        preg->re_nsub++;
-//        preg->atoms[j] = re_atom_new(RE_TYPE_PAREN);
-//        regex_t *new_preg = malloc(sizeof(regex_t));
-//        preg->atoms[j]->child = new_preg;
-//        regcomp(new_preg, pattern + i + 1, _cflags);
-//        for (; pattern[i - 1] != '\\' && pattern[i] != ')' && pattern[i] != '\0'; i++)
-//          ;
         preg->atoms[j] = re_atom_new(RE_TYPE_LPAREN);
         preg->re_nsub++;
         break;
       case ')':
         preg->atoms[j] = re_atom_new(RE_TYPE_RPAREN);
         break;
-//        preg->atoms[j] = re_atom_new(RE_TYPE_TERM);
-//        return 0;
       case '\\':
         preg->atoms[j] = re_atom_new(RE_TYPE_LIT);
         if (pattern[i + 1] == '\0') {
