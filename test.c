@@ -140,16 +140,19 @@ main(void)
     assert_match("a(b*)c", "abc", true);
     assert_match("a(b*)c", "abbc", true);
     assert_match("a([0-9]+)c", "a123c", true);
+    assert_match("^(a)", "a123c", true);
+    assert_match("^(%[iIwWq][\\]-~!@#$%^&*()_=+\[{};:'\"?])", "%w[a v ", true);
+    assert_match("^(%[iIwWq][\\]-~!@#$%^&*()_=+\[{};:'\"?])", "%w]a v ", true);
+    assert_match("^(%[iIwWq][\\]-~!@#$%^&*()_=+\[{};:'\"?])", "%w^a v ", true);
+    assert_match("^(%[iIwWq][\\]-~!@#$%^&*()_=+\[{};:'\"?])", "%w?a v ", true);
+    assert_match("^(%[iIwWq][\\]-~!@#$%^&*()_=+\[{};:'\"?])", "%w\\a v ", false);
   }
   { /* cases which have issue */
-    assert_match("a$", "abca", true); // REPORTing bug
-    assert_match("a$", "zabca", true); // REPORTing bug
+    assert_match("a$", "zaa", true); // REPORTing bug
     assert_match("((ab)cd)e", "abcde", true); // can not handle nested PAREN
-    assert_match("(ab)?c", "c", true);
-    assert_match("(ab)*c", "abc", true);
-    assert_match("(ab)*c", "abababc", true);
-    assert_match("(ab)+c", "abc", true);
-    assert_match("(ab)+c", "abababc", true);
+    assert_match("(ab)?c", "c", true); // ()? doesn't work
+    assert_match("(ab)*c", "abababc", true); // ()* doesn't work
+    assert_match("(ab)+c", "abababc", true); // ()+ doesn't work
   }
  // assert_match("", "", true);
   printf("\n");

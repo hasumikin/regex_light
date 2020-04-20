@@ -254,6 +254,7 @@ regcomp(regex_t *preg, const char *pattern, int _cflags)
 //        for (; pattern[i - 1] != '\\' && pattern[i] != ')' && pattern[i] != '\0'; i++)
 //          ;
         preg->atoms[j] = re_atom_new(RE_TYPE_LPAREN);
+        preg->re_nsub++;
         break;
       case ')':
         preg->atoms[j] = re_atom_new(RE_TYPE_RPAREN);
@@ -272,11 +273,26 @@ regcomp(regex_t *preg, const char *pattern, int _cflags)
       case '[':
         i++;
         int len;
-        for (len = 0; pattern[i + len] != '\0' && pattern[i + len] != ']'; len++)
+        for (len = 0;
+            pattern[i + len] != '\0'
+              && (pattern[i + len] != ']'
+                   || (pattern[i + len] == ']' && pattern[i + len - 1] == '\\')
+                 );
+            len++)
           ;
-        unsigned char *ccl = malloc(len + 1);
-        memcpy((char *)ccl, pattern + i, len);
-        ccl[len] = '\0';
+        unsigned char *ccl = malloc(len + 1); // possibly longer than actual
+        int k = 0;
+        for (len = 0; pattern[i + len] != '\0'; len++) {
+          if (pattern[i + len] == ']') break;
+          if (pattern[i + len] == '\\' && pattern[i + len + 1] == ']') {
+            ccl[k] = pattern[i + len + 1];
+            len++;
+          } else {
+            ccl[k] = pattern[i + len];
+          }
+          k++;
+        }
+        ccl[k] = '\0';
         preg->atoms[j] = re_atom_new(RE_TYPE_BRACKET);
         preg->atoms[j]->ccl = ccl;
         i += len;
