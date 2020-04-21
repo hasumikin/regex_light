@@ -243,6 +243,8 @@ regexec(regex_t *preg, const char *text, size_t nmatch, regmatch_t pmatch[], int
 int
 regcomp(regex_t *preg, const char *pattern, int _cflags)
 {
+  for (int i = 0; i < MAX_ATOM_SIZE; i++)
+    preg->atoms[i] = NULL; /* initialize */
   preg->re_nsub = 0;
   char c; // current char in pattern
   int i = 0; // current position in pattern
@@ -321,5 +323,9 @@ regcomp(regex_t *preg, const char *pattern, int _cflags)
 void
 regfree(regex_t *preg)
 {
-  /* TODO */
+  for (int i = 0; i < MAX_ATOM_SIZE; i++) {
+    if (preg->atoms[i] == NULL) break;
+    if (preg->atoms[i]->type == RE_TYPE_BRACKET) free(preg->atoms[i]->ccl);
+    free(preg->atoms[i]);
+  }
 }
