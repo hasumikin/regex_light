@@ -185,6 +185,11 @@ main(void)
     assert_match("a[]]b", "a]b", 1, "a]b");
     assert_match("a$", "zaza", 1, "a"); // this case can avoid backref bug
   }
+  {
+    assert_match("\\d+", "a9853_z", 1, "9853");
+    assert_match("\\s+", "a \t\n\rz", 1, " \t\n\r");
+    assert_match("\\w+", "_abcd0AZ9v-", 1, "_abcd0AZ9v");
+  }
   { /* cases which have issue */
     assert_match("a$", "zaa", 1, "a"); // backref bug
     assert_match("((ab)cd)e", "abcde", 3, "abcde", "abcd", "ab"); // can not handle nested PAREN

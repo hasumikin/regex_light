@@ -1,7 +1,21 @@
 #include <stdbool.h>
-#include <stdlib.h>
 #include <string.h>
 #include "regex_light.h"
+
+/*
+ * You can use functions other than malloc() and free()
+ *
+ *   CFLAGS=-DREGEX_NO_ALLOC_LIBC make
+ */
+#ifdef REGEX_NO_ALLOC_LIBC
+  #define  REGEX_ALLOC(size)  your_alloc(size) /* override */
+  #define  REGEX_FREE(ptr)    your_free(ptr)   /* override */
+#else
+  #include <stdlib.h>
+  #define  REGEX_ALLOC(size)  malloc(size)
+  #define  REGEX_FREE(ptr)    free(ptr)
+#endif /* REGEX_NO_ALLOC_LIBC */
+
 
 typedef enum {
   RE_TYPE_TERM,     // sentinel of finishing expression
@@ -49,7 +63,7 @@ static int matchbetween(ReState rs, const unsigned char *s, const char *text);
 static ReAtom
 *re_atom_new(ReType type)
 {
-  ReAtom *atom = malloc(sizeof(ReAtom));
+  ReAtom *atom = REGEX_ALLOC(sizeof(ReAtom));
   atom->type = type;
   return atom;
 }
@@ -224,14 +238,14 @@ regexec(regex_t *preg, const char *text, size_t nmatch, regmatch_t pmatch[], int
   rs.current_re_nsub = 0;
   rs.max_re_nsub = 0;
   size_t len = strlen(text);
-  rs.match_index_data = malloc(len);
+  rs.match_index_data = REGEX_ALLOC(len);
   memset(rs.match_index_data, -1, len);
   if (match(rs, preg->atoms, text)) {
     set_match_data(rs, nmatch, pmatch, len);
-    free(rs.match_index_data);
+    REGEX_FREE(rs.match_index_data);
     return 0; /* success */
   } else {
-    free(rs.match_index_data);
+    REGEX_FREE(rs.match_index_data);
     return -1; /* to be correct, it should be a thing like REG_NOMATCH */
   }
 }
@@ -240,6 +254,9 @@ regexec(regex_t *preg, const char *text, size_t nmatch, regmatch_t pmatch[], int
  * compile regular expression pattern
  * _cflags is dummy
  */
+#define REGEX_DEF_w "a-zA-Z0-9_"
+#define REGEX_DEF_s " \t\f\r\n"
+#define REGEX_DEF_d "0-9"
 int
 regcomp(regex_t *preg, const char *pattern, int _cflags)
 {
@@ -249,6 +266,7 @@ regcomp(regex_t *preg, const char *pattern, int _cflags)
   char c; // current char in pattern
   int i = 0; // current position in pattern
   int j = 0; // index of atom
+  unsigned char *ccl;
   while (pattern[i] != '\0') {
     c = pattern[i];
     switch (c) {
@@ -278,12 +296,39 @@ regcomp(regex_t *preg, const char *pattern, int _cflags)
         preg->atoms[j] = re_atom_new(RE_TYPE_RPAREN);
         break;
       case '\\':
-        preg->atoms[j] = re_atom_new(RE_TYPE_LIT);
-        if (pattern[i + 1] == '\0') {
-          preg->atoms[j]->ch = '\\';
-        } else {
-          i++;
-          preg->atoms[j]->ch = pattern[i];
+        switch (pattern[i + 1]) {
+          case '\0':
+            preg->atoms[j] = re_atom_new(RE_TYPE_LIT);
+            preg->atoms[j]->ch = '\\';
+            break;
+          case 'w':
+            i++;
+            preg->atoms[j] = re_atom_new(RE_TYPE_BRACKET);
+            ccl = REGEX_ALLOC(strlen(REGEX_DEF_w) + 1);
+            memcpy(ccl, REGEX_DEF_w, strlen(REGEX_DEF_w));
+            ccl[strlen(REGEX_DEF_w)] = '\0';
+            preg->atoms[j]->ccl = ccl;
+            break;
+          case 's':
+            i++;
+            preg->atoms[j] = re_atom_new(RE_TYPE_BRACKET);
+            ccl = REGEX_ALLOC(strlen(REGEX_DEF_s) + 1);
+            memcpy(ccl, REGEX_DEF_s, strlen(REGEX_DEF_s));
+            ccl[strlen(REGEX_DEF_s)] = '\0';
+            preg->atoms[j]->ccl = ccl;
+            break;
+          case 'd':
+            i++;
+            preg->atoms[j] = re_atom_new(RE_TYPE_BRACKET);
+            ccl = REGEX_ALLOC(strlen(REGEX_DEF_d) + 1);
+            memcpy(ccl, REGEX_DEF_d, strlen(REGEX_DEF_d));
+            ccl[strlen(REGEX_DEF_d)] = '\0';
+            preg->atoms[j]->ccl = ccl;
+            break;
+          default:
+            i++;
+            preg->atoms[j] = re_atom_new(RE_TYPE_LIT);
+            preg->atoms[j]->ch = pattern[i];
         }
         break;
       case '[':
@@ -297,7 +342,7 @@ regcomp(regex_t *preg, const char *pattern, int _cflags)
             pattern[i + len] != '\0' && (pattern[i + len] != ']');
             len++)
           ;
-        unsigned char *ccl = malloc(len + 1); // possibly longer than actual
+        ccl = REGEX_ALLOC(len + 1); // possibly longer than actual
         memcpy(ccl, pattern + i, len);
         ccl[len] = '\0';
         preg->atoms[j] = re_atom_new(RE_TYPE_BRACKET);
@@ -325,7 +370,7 @@ regfree(regex_t *preg)
 {
   for (int i = 0; i < MAX_ATOM_SIZE; i++) {
     if (preg->atoms[i] == NULL) break;
-    if (preg->atoms[i]->type == RE_TYPE_BRACKET) free(preg->atoms[i]->ccl);
-    free(preg->atoms[i]);
+    if (preg->atoms[i]->type == RE_TYPE_BRACKET) REGEX_FREE(preg->atoms[i]->ccl);
+    REGEX_FREE(preg->atoms[i]);
   }
 }
