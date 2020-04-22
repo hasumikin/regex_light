@@ -31,6 +31,6 @@
 
 ### Known issues
 #### matched-index in regmatch_t works incompletely
-- eg) `a$` for `"aba"` will reports `{rm_so: 0, rm_eo:2}`, though it should be `{rm_so: 2, rm_eo:2}`
+- eg) `a$` for `"aba"` will reports `{rm_so: 0, rm_eo:3}`, though it should be `{rm_so: 2, rm_eo:3}`
 
 #### Furthermore, there may exist many edge cases which don't work as we expect
