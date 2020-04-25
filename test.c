@@ -120,7 +120,7 @@ main(void)
     assert_match(".", "a", 1, "a");
     assert_match("..", "a", 0);
     assert_match(".*", "aaaaaa", 1, "aaaaaa");
-  { /* escape special charactor */
+  { /* escape special character */
     assert_match("\\\\", "\\", 1, "\\");
     assert_match("\\(", "(", 1, "(");
     assert_match("\\[", "[", 1, "[");
