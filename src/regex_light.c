@@ -55,21 +55,21 @@ typedef struct re_state {
   signed char *match_index_data;
 } ReState;
 
-static int match(ReState rs, ReAtom *regexp, const char *text);
-static int matchstar(ReState rs, ReAtom *c, ReAtom *regexp, const char *text);
-static int matchhere(ReState rs, ReAtom *regexp, const char *text);
-static int matchone(ReState rs, ReAtom *p, const char *text);
-static int matchquestion(ReState rs, ReAtom *regexp, const char *text);
-static int matchchars(ReState rs, const unsigned char *s, const char *text);
-static int matchbetween(ReState rs, const unsigned char *s, const char *text);
+static int match(ReState *rs, ReAtom *regexp, const char *text);
+static int matchstar(ReState *rs, ReAtom *c, ReAtom *regexp, const char *text);
+static int matchhere(ReState *rs, ReAtom *regexp, const char *text);
+static int matchone(ReState *rs, ReAtom *p, const char *text);
+static int matchquestion(ReState *rs, ReAtom *regexp, const char *text);
+static int matchchars(ReState *rs, const unsigned char *s, const char *text);
+static int matchbetween(ReState *rs, const unsigned char *s, const char *text);
 
 /*
  * report nsub
  */
 static void
-re_report_nsub(ReState rs, const char *text)
+re_report_nsub(ReState *rs, const char *text)
 {
-  rs.match_index_data[(int)((long)&text[0] - (long)&rs.original_text_top_addr[0])] = rs.current_re_nsub;
+  rs->match_index_data[(int)((long)&text[0] - (long)&rs->original_text_top_addr[0])] = rs->current_re_nsub;
 }
 #define REPORT_WITHOUT_RETURN (re_report_nsub(rs, text))
 #define REPORT \
@@ -82,7 +82,7 @@ re_report_nsub(ReState rs, const char *text)
  */
 static int
 //matchone(ReAtom p, int c)
-matchone(ReState rs, ReAtom *p, const char *text)
+matchone(ReState *rs, ReAtom *p, const char *text)
 {
   if ((p->type == RE_TYPE_LIT && p->ch == *text) || (p->type == RE_TYPE_DOT))
     REPORT;
@@ -91,7 +91,7 @@ matchone(ReState rs, ReAtom *p, const char *text)
 }
 
 static int
-matchquestion(ReState rs, ReAtom *regexp, const char *text)
+matchquestion(ReState *rs, ReAtom *regexp, const char *text)
 {
   if ((matchone(rs, regexp, text) && matchhere(rs, (regexp + 2), text + 1))
       || matchhere(rs, (regexp + 2), text)) {
@@ -103,18 +103,18 @@ matchquestion(ReState rs, ReAtom *regexp, const char *text)
 
 /* matchhere: search for regexp at beginning of text */
 static int
-matchhere(ReState rs, ReAtom *regexp, const char *text)
+matchhere(ReState *rs, ReAtom *regexp, const char *text)
 {
   do {
     if (regexp->type == RE_TYPE_TERM)
       return 1; // do not REPORT;
     if (regexp->type == RE_TYPE_LPAREN) {
-      rs.max_re_nsub++;
-      rs.current_re_nsub = rs.max_re_nsub;
+      rs->max_re_nsub++;
+      rs->current_re_nsub = rs->max_re_nsub;
       return matchhere(rs, (regexp + 1), text);
     }
     if (regexp->type == RE_TYPE_RPAREN) {
-      rs.current_re_nsub--;
+      rs->current_re_nsub--;
       return matchhere(rs, (regexp + 1), text);
     }
     if ((regexp + 1)->type == RE_TYPE_QUESTION)
@@ -134,7 +134,7 @@ matchhere(ReState rs, ReAtom *regexp, const char *text)
 }
 
 static int
-matchstar(ReState rs, ReAtom *c, ReAtom *regexp, const char *text_)
+matchstar(ReState *rs, ReAtom *c, ReAtom *regexp, const char *text_)
 {
   char *text;
   /* leftmost && longest */
@@ -154,7 +154,7 @@ matchstar(ReState rs, ReAtom *c, ReAtom *regexp, const char *text_)
 }
 
 static int
-matchbetween(ReState rs, const unsigned char* s, const char *text)
+matchbetween(ReState *rs, const unsigned char* s, const char *text)
 {
   if ((text[0] != '-') && (s[0] != '\0') && (s[0] != '-') &&
       (s[1] == '-') && (s[1] != '\0') &&
@@ -166,7 +166,7 @@ matchbetween(ReState rs, const unsigned char* s, const char *text)
 }
 
 static int
-matchchars(ReState rs, const unsigned char* s, const char *text)
+matchchars(ReState *rs, const unsigned char* s, const char *text)
 {
   do {
     if (matchbetween(rs, s, text)) {
@@ -188,7 +188,7 @@ matchchars(ReState rs, const unsigned char* s, const char *text)
 }
 
 static int
-match(ReState rs, ReAtom *regexp, const char *text)
+match(ReState *rs, ReAtom *regexp, const char *text)
 {
   if (regexp->type == RE_TYPE_BEGIN)
     return (matchhere(rs, (regexp + 1), text));
@@ -200,7 +200,7 @@ match(ReState rs, ReAtom *regexp, const char *text)
 }
 
 void
-set_match_data(ReState rs, size_t nmatch, regmatch_t pmatch[], size_t len)
+set_match_data(ReState *rs, size_t nmatch, regmatch_t pmatch[], size_t len)
 {
   int i;
   for (i = 0; i < nmatch; i++) {
@@ -209,15 +209,15 @@ set_match_data(ReState rs, size_t nmatch, regmatch_t pmatch[], size_t len)
   }
   bool scanning = false;
   for (i = len - 1; i > -1; i--) {
-    if (rs.match_index_data[i] < 0) {
+    if (rs->match_index_data[i] < 0) {
       if (scanning) break;
       continue;
     } else {
       scanning = true;
     }
     if (pmatch[0].rm_eo < 0) pmatch[0].rm_eo = i + 1;
-    if (pmatch[(int)rs.match_index_data[i]].rm_eo < 0) pmatch[(int)rs.match_index_data[i]].rm_eo = i + 1;
-    pmatch[(int)rs.match_index_data[i]].rm_so = i;
+    if (pmatch[(int)rs->match_index_data[i]].rm_eo < 0) pmatch[(int)rs->match_index_data[i]].rm_eo = i + 1;
+    pmatch[(int)rs->match_index_data[i]].rm_so = i;
   }
   pmatch[0].rm_so = i + 1;
 }
@@ -236,8 +236,8 @@ regexec(regex_t *preg, const char *text, size_t nmatch, regmatch_t pmatch[], int
   signed char mid[len];
   rs.match_index_data = mid;
   memset(rs.match_index_data, -1, len);
-  if (match(rs, preg->atoms, text)) {
-    set_match_data(rs, nmatch, pmatch, len);
+  if (match(&rs, preg->atoms, text)) {
+    set_match_data(&rs, nmatch, pmatch, len);
     return 0; /* success */
   } else {
     return -1; /* to be correct, it should be a thing like REG_NOMATCH */
