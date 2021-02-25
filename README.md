@@ -30,7 +30,11 @@
 - `\1` `\2` ... backreference in pattern
 
 ### Known issues
-#### matched-index in regmatch_t works incompletely
-- eg) `a$` for `"aba"` will reports `{rm_so: 0, rm_eo:3}`, though it should be `{rm_so: 2, rm_eo:3}`
-
-#### Furthermore, there may exist many edge cases which don't work as we expect
+```
+assert_match("[-a]", "-", 1, "-");
+assert_match("[a-]", "-", 1, "-");
+assert_match("((ab)cd)e", "abcde", 3, "abcde", "abcd", "ab"); // can not handle nested PAREN
+assert_match("(ab)?c", "c", 2, "c", ""); // ()? doesn't work
+assert_match("(ab)*c", "abababc", 2, "abababc", "ab"); // ()* doesn't work
+assert_match("(ab)+c", "abababc", 2, "abababc", "ab"); // ()+ doesn't work
+```

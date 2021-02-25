@@ -194,7 +194,7 @@ match(ReState *rs, ReAtom *regexp, const char *text)
     return (matchhere(rs, (regexp + 1), text));
   do {    /* must look even if string is empty */
     if (matchhere(rs, regexp, text)) {
-      REPORT;
+      return 1;
     } else {
       /* reset match_index_data */
       memset(rs->match_index_data, -1, strlen(text));

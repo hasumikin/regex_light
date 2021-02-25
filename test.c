@@ -154,7 +154,6 @@ main(void)
     assert_match("[a-z]", "A", 0);
     assert_match("[a-zABC0-9]", "A", 1, "A");
     assert_match("[a-zABC0-9]", "D", 0);
-    assert_match("[a-]", "-", 1, "-");
     assert_match("z[0-9]a", "6z8a9", 1, "z8a");
     assert_match("z[0-9]+a", "z1508a9", 1, "z1508a");
     assert_match("z[0-9]+[b-d]+a", "z1508ddcbda9", 1, "z1508ddcbda");
@@ -205,20 +204,22 @@ main(void)
     assert_match("\\s+", "a \t\n\rz", 1, " \t\n\r");
     assert_match("\\w+", "_abcd0AZ9v-", 1, "_abcd0AZ9v");
   }
-  { /* cases which have issue */
+  { /* used to be bugs. now fixed */
+    assert_match("a?", "c", 1, ""); // 
+    assert_match("a?", "cd", 1, ""); // ????????
+    assert_match("a*", "bd", 1, "");
+    assert_match("a*", "bad", 1, "");
+    assert_match("a*", "baad", 1, "");
+    assert_match("a*", "baaaaaad", 1, "");
+    assert_match("^a?", "c", 1, ""); // adding ^ can avoid the problem above
+  }
+  { /* FIXME */
+    assert_match("[-a]", "-", 1, "-");
+    assert_match("[a-]", "-", 1, "-");
     assert_match("((ab)cd)e", "abcde", 3, "abcde", "abcd", "ab"); // can not handle nested PAREN
     assert_match("(ab)?c", "c", 2, "c", ""); // ()? doesn't work
     assert_match("(ab)*c", "abababc", 2, "abababc", "ab"); // ()* doesn't work
     assert_match("(ab)+c", "abababc", 2, "abababc", "ab"); // ()+ doesn't work
-    {
-      assert_match("a?", "c", 1, ""); // 
-      assert_match("a?", "cd", 1, ""); // ????????
-      assert_match("a*", "bd", 1, "");
-      assert_match("a*", "bad", 1, "");
-      assert_match("a*", "baad", 1, "");
-      assert_match("a*", "baaaaaad", 1, "");
-      assert_match("^a?", "c", 1, ""); // adding ^ can avoid the problem above
-    }
   }
  // assert_match("", "", 1, "");
   printf("\n");
