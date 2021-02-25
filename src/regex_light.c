@@ -8,14 +8,20 @@
  *   CFLAGS=-DREGEX_NO_ALLOC_LIBC make
  */
 #ifdef REGEX_NO_ALLOC_LIBC
-  #define  REGEX_ALLOC(size)  your_alloc(size) /* override */
-  #define  REGEX_FREE(ptr)    your_free(ptr)   /* override */
+  #define  REGEX_ALLOC(size)  allocProc(size) /* override */
+  #define  REGEX_FREE(ptr)    freeProc(ptr)   /* override */
+  void *(* allocProc)(size_t);
+  void (* freeProc)(void *);
+  void setAllocProcs(void *(*allocProcPtr)(size_t), void (*freeProcPtr)(void *))
+  {
+    allocProc = allocProcPtr;
+    freeProc = freeProcPtr;
+  }
 #else
   #include <stdlib.h>
   #define  REGEX_ALLOC(size)  malloc(size)
   #define  REGEX_FREE(ptr)    free(ptr)
 #endif /* REGEX_NO_ALLOC_LIBC */
-
 
 typedef enum {
   RE_TYPE_TERM,     // sentinel of finishing expression

@@ -31,4 +31,8 @@ int regcomp(regex_t *preg, const char *pattern, int _cflags);
 void regfree(regex_t *preg);
 int regexec(regex_t *preg, const char *string, size_t nmatch, regmatch_t pmatch[], int eflags);
 
+#ifdef REGEX_NO_ALLOC_LIBC
+void setAllocProcs(void *(*mallocProc)(size_t), void (*freeProc)(void *));
+#endif
+
 #endif /* !REGEX_LIGHT_H_ */

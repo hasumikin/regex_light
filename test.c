@@ -2,6 +2,10 @@
 #include <string.h>
 #include <stdarg.h>
 
+#ifdef REGEX_NO_ALLOC_LIBC
+#include <stdlib.h>
+#endif
+
 #ifdef USE_LIBC_REGEX
   #include <regex.h>
 #else
@@ -67,6 +71,10 @@ assert_match(char *regexp, char *text, int num, ...)
 int
 main(void)
 {
+#ifdef REGEX_NO_ALLOC_LIBC
+  setAllocProcs(malloc, free);
+#endif
+
   printf("\n");
   {
     assert_match("a", "a", 1, "a");
