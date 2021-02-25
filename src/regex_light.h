@@ -3,13 +3,11 @@
 
 #include <stddef.h>
 
-#define MAX_ATOM_SIZE 100
-
 typedef struct re_atom ReAtom;
 
 typedef struct {
   size_t re_nsub;  // number of parenthesized subexpressions ( )
-  ReAtom *atoms[MAX_ATOM_SIZE];
+  ReAtom *atoms;
 } regex_t;
 
 typedef struct {
