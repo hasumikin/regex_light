@@ -65,7 +65,7 @@ build/arm/debug/test_libc: test.c
 build/arm/production/test_libc: test.c
 	$(CC_ARM) -o $@ $^ $(CFLAGS) -Os -DNDEBUG -static $(LDFLAGS) -Wl,-s
 
-test: tests
+check: tests
 	./build/host/debug/test
 
 gdb:
@@ -74,3 +74,4 @@ gdb:
 clean:
 	rm -f $(OBJS) $(TESTS) $(TESTS_LIBC)
 
+.PHONY: test

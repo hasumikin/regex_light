@@ -12,6 +12,8 @@
   #include "src/regex_light.h"
 #endif /* USE_LIBC_REGEX */
 
+int exit_code = 0;
+
 void
 assert_match(char *regexp, char *text, int num, ...)
 {
@@ -34,6 +36,7 @@ assert_match(char *regexp, char *text, int num, ...)
       fprintf(stdout, " \e[32;1msucceeded to match\e[m\n");
     } else {
       fprintf(stderr, " \e[31;1msucceeded to match\e[m\n");
+      exit_code = 1;
     }
 
     if (num != preg.re_nsub + 1) {
@@ -54,6 +57,7 @@ assert_match(char *regexp, char *text, int num, ...)
         printf("\e[32;1m%s\e[m\n", message);
       } else {
         printf("\e[31;1m%s\e[m\n", message);
+        exit_code = 1;
       }
     }
     va_end(list);
@@ -62,6 +66,7 @@ assert_match(char *regexp, char *text, int num, ...)
       fprintf(stdout, " \e[32;1mfailed to match\e[m\n");
     } else {
       fprintf(stderr, " \e[31;1mfailed to match\e[m\n");
+      exit_code = 1;
     }
   }
 
@@ -213,6 +218,7 @@ main(void)
     assert_match("a*", "baaaaaad", 1, "");
     assert_match("^a?", "c", 1, ""); // adding ^ can avoid the problem above
   }
+  return exit_code;
   { /* FIXME */
     assert_match("[-a]", "-", 1, "-");
     assert_match("[a-]", "-", 1, "-");
@@ -221,7 +227,4 @@ main(void)
     assert_match("(ab)*c", "abababc", 2, "abababc", "ab"); // ()* doesn't work
     assert_match("(ab)+c", "abababc", 2, "abababc", "ab"); // ()+ doesn't work
   }
- // assert_match("", "", 1, "");
-  printf("\n");
-  return 0;
 }
