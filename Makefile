@@ -13,8 +13,6 @@ all:
 	@mkdir -p build/arm/debug
 	@mkdir -p build/arm/production
 	$(MAKE) objs
-	$(MAKE) tests
-	$(MAKE) tests_libc CFLAGS=-DUSE_LIBC_REGEX
 
 objs: $(OBJS)
 
@@ -67,12 +65,12 @@ build/arm/debug/test_libc: test.c
 build/arm/production/test_libc: test.c
 	$(CC_ARM) -o $@ $^ $(CFLAGS) -Os -DNDEBUG -static $(LDFLAGS) -Wl,-s
 
-assert:
+test: tests
 	./build/host/debug/test
 
 gdb:
 	gdb ./build/host/debug/test
 
 clean:
-	rm $(OBJS) $(TESTS)
+	rm -f $(OBJS) $(TESTS) $(TESTS_LIBC)
 

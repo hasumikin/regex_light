@@ -14,7 +14,7 @@ assert_match(char *regexp, char *text, int num, ...)
   va_list list;
   char *expect;
   char actual[100];
-  char message[100];
+  char message[171];
   int i, j, k;
 
   regex_t preg;
