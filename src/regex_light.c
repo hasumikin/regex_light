@@ -69,7 +69,12 @@ static int matchbetween(ReState *rs, const unsigned char *s, const char *text);
 static void
 re_report_nsub(ReState *rs, const char *text)
 {
-  rs->match_index_data[(int)((long)&text[0] - (long)&rs->original_text_top_addr[0])] = rs->current_re_nsub;
+  int pos = (int)((long)text - (long)rs->original_text_top_addr);
+  int pp;
+  if (pos == 0) {
+    pp = pos;
+  }
+  rs->match_index_data[pos] = rs->current_re_nsub;
 }
 #define REPORT_WITHOUT_RETURN (re_report_nsub(rs, text))
 #define REPORT \
@@ -84,7 +89,7 @@ static int
 //matchone(ReAtom p, int c)
 matchone(ReState *rs, ReAtom *p, const char *text)
 {
-  if ((p->type == RE_TYPE_LIT && p->ch == *text) || (p->type == RE_TYPE_DOT))
+  if ((p->type == RE_TYPE_LIT && p->ch == text[0]) || (p->type == RE_TYPE_DOT))
     REPORT;
   if (p->type == RE_TYPE_BRACKET) return matchchars(rs, p->ccl, text);
   return 0;
@@ -124,8 +129,8 @@ matchhere(ReState *rs, ReAtom *regexp, const char *text)
     if ((regexp + 1)->type == RE_TYPE_PLUS)
       return matchone(rs, regexp, text) && matchstar(rs, regexp, (regexp + 2), text + 1);
     if (regexp->type == RE_TYPE_END && (regexp + 1)->type == RE_TYPE_TERM)
-      return *text == '\0';
-    if (*text != '\0' && (regexp->type == RE_TYPE_DOT || (regexp->type == RE_TYPE_LIT && regexp->ch == *text))) {
+      return text[0] == '\0';
+    if (text[0] != '\0' && (regexp->type == RE_TYPE_DOT || (regexp->type == RE_TYPE_LIT && regexp->ch == text[0]))) {
       REPORT_WITHOUT_RETURN;
       return matchhere(rs, (regexp + 1), text + 1);
     }
@@ -139,8 +144,8 @@ matchstar(ReState *rs, ReAtom *c, ReAtom *regexp, const char *text_)
   char *text;
   /* leftmost && longest */
   for (text = (char *)text_;
-       *text != '\0' && (
-         (c->type == RE_TYPE_LIT && *text == c->ch) ||
+       text[0] != '\0' && (
+         (c->type == RE_TYPE_LIT && text[0] == c->ch) ||
          (c->type == RE_TYPE_BRACKET && matchchars(rs, c->ccl, text)) ||
          c->type == RE_TYPE_DOT
        );
@@ -200,12 +205,12 @@ match(ReState *rs, ReAtom *regexp, const char *text)
 }
 
 void
-set_match_data(ReState *rs, size_t nmatch, regmatch_t pmatch[], size_t len)
+set_match_data(ReState *rs, size_t nmatch, regmatch_t *pmatch, size_t len)
 {
   int i;
   for (i = 0; i < nmatch; i++) {
-    pmatch[i].rm_so = -1;
-    pmatch[i].rm_eo = -1;
+    (pmatch + i)->rm_so = -1;
+    (pmatch + i)->rm_eo = -1;
   }
   bool scanning = false;
   for (i = len - 1; i > -1; i--) {
@@ -215,9 +220,11 @@ set_match_data(ReState *rs, size_t nmatch, regmatch_t pmatch[], size_t len)
     } else {
       scanning = true;
     }
-    if (pmatch[0].rm_eo < 0) pmatch[0].rm_eo = i + 1;
-    if (pmatch[(int)rs->match_index_data[i]].rm_eo < 0) pmatch[(int)rs->match_index_data[i]].rm_eo = i + 1;
-    pmatch[(int)rs->match_index_data[i]].rm_so = i;
+    if (pmatch->rm_eo < 0)
+      pmatch->rm_eo = i + 1;
+    if ( (pmatch + rs->match_index_data[i])->rm_eo < 0 )
+      (pmatch + rs->match_index_data[i])->rm_eo = i + 1;
+    (pmatch + rs->match_index_data[i])->rm_so = i;
   }
   pmatch[0].rm_so = i + 1;
 }
@@ -226,7 +233,7 @@ set_match_data(ReState *rs, size_t nmatch, regmatch_t pmatch[], size_t len)
  * public functions
  */
 int
-regexec(regex_t *preg, const char *text, size_t nmatch, regmatch_t pmatch[], int _eflags)
+regexec(regex_t *preg, const char *text, size_t nmatch, regmatch_t *pmatch, int _eflags)
 {
   ReState rs;
   rs.original_text_top_addr = (void *)text;
