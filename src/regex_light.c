@@ -244,14 +244,13 @@ regexec(regex_t *preg, const char *text, size_t nmatch, regmatch_t pmatch[], int
   rs.current_re_nsub = 0;
   rs.max_re_nsub = 0;
   size_t len = strlen(text);
-  rs.match_index_data = REGEX_ALLOC(len);
+  signed char mid[len];
+  rs.match_index_data = mid;
   memset(rs.match_index_data, -1, len);
   if (match(rs, preg->atoms, text)) {
     set_match_data(rs, nmatch, pmatch, len);
-    REGEX_FREE(rs.match_index_data);
     return 0; /* success */
   } else {
-    REGEX_FREE(rs.match_index_data);
     return -1; /* to be correct, it should be a thing like REG_NOMATCH */
   }
 }
