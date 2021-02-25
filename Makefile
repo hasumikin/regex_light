@@ -2,21 +2,30 @@ CC := gcc
 CC_ARM := arm-linux-gnueabihf-gcc
 LDFLAGS +=
 CFLAGS += -Wall
-OBJS := build/host/debug/regex.o build/host/production/regex.o build/arm/debug/regex.o build/arm/production/regex.o
-TESTS := build/host/debug/test build/host/production/test build/arm/debug/test build/arm/production/test
+OBJS := build/host/debug/regex.o build/host/production/regex.o
+TESTS := build/host/debug/test build/host/production/test
+OBJS_ARM:= build/arm/debug/regex.o build/arm/production/regex.o
+TESTS_ARM := build/arm/debug/test build/arm/production/test
 TESTS_LIBC := build/host/debug/test_libc build/host/production/test_libc build/arm/debug/test_libc build/arm/production/test_libc
 SRCS := src/regex_light.c
 
-all:
+host:
 	@mkdir -p build/host/debug
 	@mkdir -p build/host/production
+	$(MAKE) objs
+
+arm:
 	@mkdir -p build/arm/debug
 	@mkdir -p build/arm/production
-	$(MAKE) objs
+	$(MAKE) objs_arm
 
 objs: $(OBJS)
 
+objs_arm: $(OBJS_ARM)
+
 tests: $(TESTS)
+
+tests_arm: $(TESTS_ARM)
 
 tests_libc: $(TESTS_LIBC)
 
@@ -67,6 +76,9 @@ build/arm/production/test_libc: test.c
 
 check: tests
 	./build/host/debug/test
+
+check_arm: tests_arm
+	./build/arm/debug/test
 
 gdb:
 	gdb ./build/host/debug/test
