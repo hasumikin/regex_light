@@ -70,10 +70,6 @@ static void
 re_report_nsub(ReState *rs, const char *text)
 {
   int pos = (int)((long)text - (long)rs->original_text_top_addr);
-  int pp;
-  if (pos == 0) {
-    pp = pos;
-  }
   rs->match_index_data[pos] = rs->current_re_nsub;
 }
 #define REPORT_WITHOUT_RETURN (re_report_nsub(rs, text))
@@ -86,7 +82,6 @@ re_report_nsub(ReState *rs, const char *text)
  * matcher functions
  */
 static int
-//matchone(ReAtom p, int c)
 matchone(ReState *rs, ReAtom *p, const char *text)
 {
   if ((p->type == RE_TYPE_LIT && p->ch == text[0]) || (p->type == RE_TYPE_DOT))
@@ -119,7 +114,7 @@ matchhere(ReState *rs, ReAtom *regexp, const char *text)
       return matchhere(rs, (regexp + 1), text);
     }
     if (regexp->type == RE_TYPE_RPAREN) {
-      rs->current_re_nsub--;
+      rs->current_re_nsub = 0; /* Nested paren doesn't work. eg) `ab(c(de))fg` */
       return matchhere(rs, (regexp + 1), text);
     }
     if ((regexp + 1)->type == RE_TYPE_QUESTION)
@@ -198,8 +193,14 @@ match(ReState *rs, ReAtom *regexp, const char *text)
   if (regexp->type == RE_TYPE_BEGIN)
     return (matchhere(rs, (regexp + 1), text));
   do {    /* must look even if string is empty */
-    if (matchhere(rs, regexp, text))
+    if (matchhere(rs, regexp, text)) {
       REPORT;
+    } else {
+      /* reset match_index_data */
+      memset(rs->match_index_data, -1, strlen(text));
+      rs->current_re_nsub = 0;
+      rs->max_re_nsub = 0;
+    }
   } while (*text++ != '\0');
   return 0;
 }
@@ -237,12 +238,12 @@ regexec(regex_t *preg, const char *text, size_t nmatch, regmatch_t *pmatch, int 
 {
   ReState rs;
   rs.original_text_top_addr = (void *)text;
-  rs.current_re_nsub = 0;
-  rs.max_re_nsub = 0;
   size_t len = strlen(text);
   signed char mid[len];
   rs.match_index_data = mid;
   memset(rs.match_index_data, -1, len);
+  rs.current_re_nsub = 0;
+  rs.max_re_nsub = 0;
   if (match(&rs, preg->atoms, text)) {
     set_match_data(&rs, nmatch, pmatch, len);
     return 0; /* success */
