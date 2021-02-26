@@ -1,3 +1,5 @@
+[![C/C++ CI](https://github.com/hasumikin/regex_light/actions/workflows/c-cpp.yml/badge.svg)](https://github.com/hasumikin/regex_light/actions/workflows/c-cpp.yml)
+
 ## Regex Light
 
 ### $Lang
