@@ -7,7 +7,7 @@ TESTS := build/host/debug/test build/host/production/test
 OBJS_ARM:= build/arm/debug/regex.o build/arm/production/regex.o
 TESTS_ARM := build/arm/debug/test build/arm/production/test
 TESTS_LIBC := build/host/debug/test_libc build/host/production/test_libc build/arm/debug/test_libc build/arm/production/test_libc
-SRCS := src/regex_light.c
+SRCS := src/regex.c
 
 host:
 	@mkdir -p build/host/debug

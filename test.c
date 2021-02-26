@@ -9,7 +9,7 @@
 #ifdef USE_LIBC_REGEX
   #include <regex.h>
 #else
-  #include "src/regex_light.h"
+  #include "src/regex.h"
 #endif /* USE_LIBC_REGEX */
 
 int exit_code = 0;

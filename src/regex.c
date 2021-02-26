@@ -1,6 +1,6 @@
 #include <stdbool.h>
 #include <string.h>
-#include "regex_light.h"
+#include "regex.h"
 
 /*
  * You can use functions other than malloc() and free()
