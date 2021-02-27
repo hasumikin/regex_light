@@ -2,6 +2,7 @@
 #define REGEX_LIGHT_H_
 
 #include <stddef.h>
+#include <stdint.h>
 
 typedef struct re_atom ReAtom;
 
@@ -11,8 +12,8 @@ typedef struct {
 } regex_t;
 
 typedef struct {
-  int rm_so; // start position of match
-  int rm_eo; // end position of match
+  int16_t rm_so; // start position of match
+  int16_t rm_eo; // end position of match
 } regmatch_t;
 
 /* regcomp() flags */

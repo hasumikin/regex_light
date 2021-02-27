@@ -24,7 +24,7 @@
 #endif /* REGEX_NO_ALLOC_LIBC */
 
 typedef enum {
-  RE_TYPE_TERM,     // sentinel of finishing expression
+  RE_TYPE_TERM = 0, // sentinel of finishing expression. It must be 0
   RE_TYPE_LIT,      // literal
   RE_TYPE_DOT,      // .
   RE_TYPE_QUESTION, // ?
@@ -252,6 +252,20 @@ regexec(regex_t *preg, const char *text, size_t nmatch, regmatch_t *pmatch, int 
   }
 }
 
+size_t
+gen_ccl(ReAtom *atom, const char *snippet, size_t len)
+{
+  if (len == 0) len = strlen(snippet);
+  unsigned char *ccl;
+  atom->type = RE_TYPE_BRACKET;
+  ccl = REGEX_ALLOC(len + 1);
+  memcpy(ccl, snippet, len);
+  ccl[len] = '\0';
+  atom->ccl = ccl;
+  return len + 1;
+}
+#define gen_ccl_const(atom, snippet) gen_ccl(atom, snippet, 0)
+
 /*
  * compile regular expression pattern
  * _cflags is dummy
@@ -262,107 +276,102 @@ regexec(regex_t *preg, const char *text, size_t nmatch, regmatch_t *pmatch, int 
 int
 regcomp(regex_t *preg, const char *pattern, int _cflags)
 {
-  size_t tmp_size = strlen(pattern);
-  ReAtom *atoms = REGEX_ALLOC(sizeof(ReAtom) * tmp_size);
+  ReAtom *atoms = (ReAtom *)REGEX_ALLOC(sizeof(ReAtom) * strlen(pattern));
+  ReAtom *atoms_head = atoms;
   preg->re_nsub = 0;
-  char c; // current char in pattern
-  int i = 0; // current position in pattern
-  int j = 0; // index of atom
-  unsigned char *ccl;
-  while (pattern[i] != '\0') {
-    c = pattern[i];
-    switch (c) {
+  size_t ccl_len = 0; // total length of ccl(s)
+  size_t len;
+  while (pattern[0] != '\0') {
+    switch (pattern[0]) {
       case '.':
-        (atoms + j)->type = RE_TYPE_DOT;
+        atoms->type = RE_TYPE_DOT;
         break;
       case '?':
-        (atoms + j)->type = RE_TYPE_QUESTION;
+        atoms->type = RE_TYPE_QUESTION;
         break;
       case '*':
-        (atoms + j)->type = RE_TYPE_STAR;
+        atoms->type = RE_TYPE_STAR;
         break;
       case '+':
-        (atoms + j)->type = RE_TYPE_PLUS;
+        atoms->type = RE_TYPE_PLUS;
         break;
       case '^':
-        (atoms + j)->type = RE_TYPE_BEGIN;
+        atoms->type = RE_TYPE_BEGIN;
         break;
       case '$':
-        (atoms + j)->type = RE_TYPE_END;
+        atoms->type = RE_TYPE_END;
         break;
       case '(':
-        (atoms + j)->type = RE_TYPE_LPAREN;
+        atoms->type = RE_TYPE_LPAREN;
         preg->re_nsub++;
         break;
       case ')':
-        (atoms + j)->type = RE_TYPE_RPAREN;
+        atoms->type = RE_TYPE_RPAREN;
         break;
       case '\\':
-        switch (pattern[i + 1]) {
+        switch (pattern[1]) {
           case '\0':
-            (atoms + j)->type = RE_TYPE_LIT;
-            (atoms + j)->ch = '\\';
+            atoms->type = RE_TYPE_LIT;
+            atoms->ch = '\\';
             break;
           case 'w':
-            i++;
-            (atoms + j)->type = RE_TYPE_BRACKET;
-            ccl = REGEX_ALLOC(strlen(REGEX_DEF_w) + 1);
-            memcpy(ccl, REGEX_DEF_w, strlen(REGEX_DEF_w));
-            ccl[strlen(REGEX_DEF_w)] = '\0';
-            (atoms + j)->ccl = ccl;
+            pattern++;
+            ccl_len += gen_ccl_const(atoms, REGEX_DEF_w);
             break;
           case 's':
-            i++;
-            (atoms + j)->type = RE_TYPE_BRACKET;
-            ccl = REGEX_ALLOC(strlen(REGEX_DEF_s) + 1);
-            memcpy(ccl, REGEX_DEF_s, strlen(REGEX_DEF_s));
-            ccl[strlen(REGEX_DEF_s)] = '\0';
-            (atoms + j)->ccl = ccl;
+            pattern++;
+            ccl_len += gen_ccl_const(atoms, REGEX_DEF_s);
             break;
           case 'd':
-            i++;
-            (atoms + j)->type = RE_TYPE_BRACKET;
-            ccl = REGEX_ALLOC(strlen(REGEX_DEF_d) + 1);
-            memcpy(ccl, REGEX_DEF_d, strlen(REGEX_DEF_d));
-            ccl[strlen(REGEX_DEF_d)] = '\0';
-            (atoms + j)->ccl = ccl;
+            pattern++;
+            ccl_len += gen_ccl_const(atoms, REGEX_DEF_d);
             break;
           default:
-            i++;
-            (atoms + j)->type = RE_TYPE_LIT;
-            (atoms + j)->ch = pattern[i];
+            pattern++;
+            atoms->type = RE_TYPE_LIT;
+            atoms->ch = pattern[0];
         }
         break;
       case '[':
-        i++;
-        int len;
+        pattern++;
          /*
           * pattern [] must contain at least one letter.
           * first letter of the content should be ']' if you want to match literal ']'
           */
         for (len = 1;
-            pattern[i + len] != '\0' && (pattern[i + len] != ']');
+            pattern[len] != '\0' && (pattern[len] != ']');
             len++)
           ;
-        ccl = REGEX_ALLOC(len + 1); // possibly longer than actual
-        memcpy(ccl, pattern + i, len);
-        ccl[len] = '\0';
-        (atoms + j)->type = RE_TYPE_BRACKET;
-        (atoms + j)->ccl = ccl;
-        i += len;
+        ccl_len += gen_ccl(atoms, pattern, len);
+        pattern += len;
         break;
       default:
-        (atoms + j)->type = RE_TYPE_LIT;
-        (atoms + j)->ch = c;
+        atoms->type = RE_TYPE_LIT;
+        atoms->ch = pattern[0];
         break;
     }
-    i++;
-    j++;
+    pattern++;
+    atoms++;
   }
-  (atoms + j)->type = RE_TYPE_TERM;
-  preg->atoms = REGEX_ALLOC(sizeof(ReAtom) * j);
-  memcpy(preg->atoms, atoms, sizeof(ReAtom) * j);
-  REGEX_FREE(atoms);
+  { /* gather scattered objects into one object */
+    size_t atoms_size = (size_t)atoms - (size_t)atoms_head;
+    preg->atoms = REGEX_ALLOC(atoms_size + ccl_len);
+    memset(preg->atoms, 0, atoms_size + ccl_len);
+    memcpy(preg->atoms, atoms_head, atoms_size);
+    unsigned char *ccl = (unsigned char *)atoms;
+    ReAtom *a = preg->atoms;
+    while (a->type != RE_TYPE_TERM) {
+      if (a->type == RE_TYPE_BRACKET) {
+        len = strlen((const char *)a->ccl) + 1;
+        memcpy(ccl, a->ccl, len);
+        REGEX_FREE(a->ccl);
+        a->ccl = ccl;
+        ccl += len;
+      }
+      a++;
+    }
+    REGEX_FREE(atoms_head);
+  }
   return 0;
 }
 
@@ -372,11 +381,5 @@ regcomp(regex_t *preg, const char *pattern, int _cflags)
 void
 regfree(regex_t *preg)
 {
-  int i = 0;
-  for (;;) {
-    if ((preg->atoms + i)->type == RE_TYPE_TERM) break;
-    if ((preg->atoms + i)->type == RE_TYPE_BRACKET) REGEX_FREE((preg->atoms + i)->ccl);
-    i++;
-  }
   REGEX_FREE(preg->atoms);
 }
