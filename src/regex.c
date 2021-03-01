@@ -1,27 +1,26 @@
 #include <stdbool.h>
 #include <string.h>
-#include "regex.h"
+#include "./regex.h"
 
 /*
- * You can use functions other than malloc() and free()
- *
- *   CFLAGS=-DREGEX_NO_ALLOC_LIBC make
+ * You can use stdlib's malloc() and free()
+ *   CFLAGS=-DREGEX_USE_ALLOC_LIBC make
  */
-#ifdef REGEX_NO_ALLOC_LIBC
-  #define  REGEX_ALLOC(size)  allocProc(size) /* override */
-  #define  REGEX_FREE(ptr)    freeProc(ptr)   /* override */
-  void *(* allocProc)(size_t);
-  void (* freeProc)(void *);
-  void setAllocProcs(void *(*allocProcPtr)(size_t), void (*freeProcPtr)(void *))
+#ifndef REGEX_USE_ALLOC_LIBC
+  #define  REGEX_ALLOC(size)  RegexAllocProc(size) /* override */
+  #define  REGEX_FREE(ptr)    RegexFreeProc(ptr)   /* override */
+  void *(* RegexAllocProc)(size_t);
+  void (* RegexFreeProc)(void *);
+  void RegexSetAllocProcs(void *(*allocProcPtr)(size_t), void (*freeProcPtr)(void *))
   {
-    allocProc = allocProcPtr;
-    freeProc = freeProcPtr;
+    RegexAllocProc = allocProcPtr;
+    RegexFreeProc = freeProcPtr;
   }
 #else
   #include <stdlib.h>
   #define  REGEX_ALLOC(size)  malloc(size)
   #define  REGEX_FREE(ptr)    free(ptr)
-#endif /* REGEX_NO_ALLOC_LIBC */
+#endif /* REGEX_USE_ALLOC_LIBC */
 
 typedef enum {
   RE_TYPE_TERM = 0, // sentinel of finishing expression. It must be 0
@@ -253,18 +252,19 @@ regexec(regex_t *preg, const char *text, size_t nmatch, regmatch_t *pmatch, int 
 }
 
 size_t
-gen_ccl(ReAtom *atom, const char *snippet, size_t len)
+gen_ccl(ReAtom *atom, unsigned char **ccl, const char *snippet, size_t len, bool dry_run)
 {
   if (len == 0) len = strlen(snippet);
-  unsigned char *ccl;
-  atom->type = RE_TYPE_BRACKET;
-  ccl = REGEX_ALLOC(len + 1);
-  memcpy(ccl, snippet, len);
-  ccl[len] = '\0';
-  atom->ccl = ccl;
+  if (!dry_run) {
+    memcpy(*ccl, snippet, len);
+    (*ccl)[len] = '\0';
+    atom->ccl = *ccl;
+    atom->type = RE_TYPE_BRACKET;
+    *ccl += len + 1;
+  }
   return len + 1;
 }
-#define gen_ccl_const(atom, snippet) gen_ccl(atom, snippet, 0)
+#define gen_ccl_const(atom, ccl, snippet, dry_run) gen_ccl(atom, ccl, snippet, 0, dry_run)
 
 /*
  * compile regular expression pattern
@@ -276,101 +276,106 @@ gen_ccl(ReAtom *atom, const char *snippet, size_t len)
 int
 regcomp(regex_t *preg, const char *pattern, int _cflags)
 {
-  ReAtom *atoms = (ReAtom *)REGEX_ALLOC(sizeof(ReAtom) * strlen(pattern));
-  ReAtom *atoms_head = atoms;
+  ReAtom *atoms = REGEX_ALLOC(sizeof(ReAtom));
   preg->re_nsub = 0;
   size_t ccl_len = 0; // total length of ccl(s)
   size_t len;
-  while (pattern[0] != '\0') {
-    switch (pattern[0]) {
-      case '.':
-        atoms->type = RE_TYPE_DOT;
-        break;
-      case '?':
-        atoms->type = RE_TYPE_QUESTION;
-        break;
-      case '*':
-        atoms->type = RE_TYPE_STAR;
-        break;
-      case '+':
-        atoms->type = RE_TYPE_PLUS;
-        break;
-      case '^':
-        atoms->type = RE_TYPE_BEGIN;
-        break;
-      case '$':
-        atoms->type = RE_TYPE_END;
-        break;
-      case '(':
-        atoms->type = RE_TYPE_LPAREN;
-        preg->re_nsub++;
-        break;
-      case ')':
-        atoms->type = RE_TYPE_RPAREN;
-        break;
-      case '\\':
-        switch (pattern[1]) {
-          case '\0':
-            atoms->type = RE_TYPE_LIT;
-            atoms->ch = '\\';
-            break;
-          case 'w':
-            pattern++;
-            ccl_len += gen_ccl_const(atoms, REGEX_DEF_w);
-            break;
-          case 's':
-            pattern++;
-            ccl_len += gen_ccl_const(atoms, REGEX_DEF_s);
-            break;
-          case 'd':
-            pattern++;
-            ccl_len += gen_ccl_const(atoms, REGEX_DEF_d);
-            break;
-          default:
-            pattern++;
-            atoms->type = RE_TYPE_LIT;
-            atoms->ch = pattern[0];
-        }
-        break;
-      case '[':
-        pattern++;
-         /*
-          * pattern [] must contain at least one letter.
-          * first letter of the content should be ']' if you want to match literal ']'
-          */
-        for (len = 1;
-            pattern[len] != '\0' && (pattern[len] != ']');
-            len++)
-          ;
-        ccl_len += gen_ccl(atoms, pattern, len);
-        pattern += len;
-        break;
-      default:
-        atoms->type = RE_TYPE_LIT;
-        atoms->ch = pattern[0];
-        break;
-    }
-    pattern++;
-    atoms++;
-  }
-  { /* gather scattered objects into one object */
-    size_t atoms_size = (size_t)atoms - (size_t)atoms_head;
-    preg->atoms = REGEX_ALLOC(atoms_size + ccl_len);
-    memset(preg->atoms, 0, atoms_size + ccl_len);
-    memcpy(preg->atoms, atoms_head, atoms_size);
-    unsigned char *ccl = (unsigned char *)atoms;
-    ReAtom *a = preg->atoms;
-    while (a->type != RE_TYPE_TERM) {
-      if (a->type == RE_TYPE_BRACKET) {
-        len = strlen((const char *)a->ccl) + 1;
-        memcpy(ccl, a->ccl, len);
-        REGEX_FREE(a->ccl);
-        a->ccl = ccl;
-        ccl += len;
+  bool dry_run = true;
+  char *pattern_index = (char *)pattern;
+  uint16_t atoms_count = 1;
+  unsigned char *ccl;
+  /*
+   * Just calculates size of atoms as a dry-run,
+   * then makes atoms and ccl(s) at the second time
+   */
+  for (;;) {
+    while (pattern_index[0] != '\0') {
+      switch (pattern_index[0]) {
+        case '.':
+          atoms->type = RE_TYPE_DOT;
+          break;
+        case '?':
+          atoms->type = RE_TYPE_QUESTION;
+          break;
+        case '*':
+          atoms->type = RE_TYPE_STAR;
+          break;
+        case '+':
+          atoms->type = RE_TYPE_PLUS;
+          break;
+        case '^':
+          atoms->type = RE_TYPE_BEGIN;
+          break;
+        case '$':
+          atoms->type = RE_TYPE_END;
+          break;
+        case '(':
+          atoms->type = RE_TYPE_LPAREN;
+          preg->re_nsub++;
+          break;
+        case ')':
+          atoms->type = RE_TYPE_RPAREN;
+          break;
+        case '\\':
+          switch (pattern_index[1]) {
+            case '\0':
+              atoms->type = RE_TYPE_LIT;
+              atoms->ch = '\\';
+              break;
+            case 'w':
+              pattern_index++;
+              ccl_len += gen_ccl_const(atoms, &ccl, REGEX_DEF_w, dry_run);
+              break;
+            case 's':
+              pattern_index++;
+              ccl_len += gen_ccl_const(atoms, &ccl, REGEX_DEF_s, dry_run);
+              break;
+            case 'd':
+              pattern_index++;
+              ccl_len += gen_ccl_const(atoms, &ccl, REGEX_DEF_d, dry_run);
+              break;
+            default:
+              pattern_index++;
+              atoms->type = RE_TYPE_LIT;
+              atoms->ch = pattern_index[0];
+          }
+          break;
+        case '[':
+          pattern_index++;
+           /*
+            * pattern [] must contain at least one letter.
+            * first letter of the content should be ']' if you want to match literal ']'
+            */
+          for (len = 1;
+              pattern_index[len] != '\0' && (pattern_index[len] != ']');
+              len++)
+            ;
+          ccl_len += gen_ccl(atoms, &ccl, pattern_index, len, dry_run);
+          pattern_index += len;
+          break;
+        default:
+          atoms->type = RE_TYPE_LIT;
+          atoms->ch = pattern_index[0];
+          break;
       }
-      a++;
+      pattern_index++;
+      if (dry_run) {
+        atoms_count++;
+      } else {
+        atoms++;
+      } 
     }
-    REGEX_FREE(atoms_head);
+    if (dry_run) {
+      dry_run = false;
+      pattern_index = (char *)pattern;
+      REGEX_FREE(atoms);
+      atoms = (ReAtom *)REGEX_ALLOC(sizeof(ReAtom) * atoms_count + ccl_len);
+      ccl = (unsigned char *)(atoms + atoms_count);
+    } else {
+      atoms->type = RE_TYPE_TERM;
+      preg->atoms = atoms - atoms_count + 1;
+      break;
+    }
   }
   return 0;
 }
@@ -383,3 +388,4 @@ regfree(regex_t *preg)
 {
   REGEX_FREE(preg->atoms);
 }
+

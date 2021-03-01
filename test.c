@@ -1,16 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdarg.h>
-
-#ifdef REGEX_NO_ALLOC_LIBC
-#include <stdlib.h>
-#endif
-
-#ifdef USE_LIBC_REGEX
-  #include <regex.h>
-#else
-  #include "src/regex.h"
-#endif /* USE_LIBC_REGEX */
+#include "src/regex.h"
 
 int exit_code = 0;
 
@@ -76,9 +67,6 @@ assert_match(char *regexp, char *text, int num, ...)
 int
 main(void)
 {
-#ifdef REGEX_NO_ALLOC_LIBC
-  setAllocProcs(malloc, free);
-#endif
 
   printf("\n");
   {
@@ -218,6 +206,7 @@ main(void)
     assert_match("a*", "baaaaaad", 1, "");
     assert_match("^a?", "c", 1, ""); // adding ^ can avoid the problem above
   }
+    assert_match("^([0-9_]+)", "1", 2, "1", "1");
   return exit_code;
   { /* FIXME */
     assert_match("[-a]", "-", 1, "-");
