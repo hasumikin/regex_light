@@ -2,6 +2,16 @@
 
 ## Regex Light
 
+### Acknowledgement
+
+The implementation of regex_light started from this great article:
+[https://www.cs.princeton.edu/courses/archive/spr09/cos333/beautiful.html](https://www.cs.princeton.edu/courses/archive/spr09/cos333/beautiful.html)
+
+### Features
+- `()`: You can make parenthesized groups for backward reference
+- Small and fast
+- Portablity: Similar API to stdlib's regex
+
 ### $Lang
 - C.ASCII
 
