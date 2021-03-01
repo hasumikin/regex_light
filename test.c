@@ -32,6 +32,7 @@ assert_match(char *regexp, char *text, int num, ...)
 
     if (num != preg.re_nsub + 1) {
       printf("\e[31;1m%s\e[m\n", "arg `num` does not correspond to preg.re_nsub");
+      exit_code = 1;
     }
 
     va_start(list, num);

@@ -311,7 +311,7 @@ regcomp(regex_t *preg, const char *pattern, int _cflags)
           break;
         case '(':
           atoms->type = RE_TYPE_LPAREN;
-          preg->re_nsub++;
+          if (!dry_run) preg->re_nsub++;
           break;
         case ')':
           atoms->type = RE_TYPE_RPAREN;
