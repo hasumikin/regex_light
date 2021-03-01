@@ -13,7 +13,6 @@ all: $(SRCS)
 	@mkdir -p build/arm/production
 	cd src ; $(MAKE)
 	$(MAKE) $(TESTS)
-	$(MAKE) $(TESTS_ARM)
 
 #
 # test executables
