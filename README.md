@@ -8,7 +8,8 @@ The implementation of regex_light started from this great article:
 [https://www.cs.princeton.edu/courses/archive/spr09/cos333/beautiful.html](https://www.cs.princeton.edu/courses/archive/spr09/cos333/beautiful.html)
 
 ### Features
-- `()`: You can make parenthesized groups for backward reference
+- `()`: You can make parenthesized groups for backward reference, including nested groups and quantifiers (`?`, `*`, `+`).
+- Character class (`[]`) literal hyphens (e.g., `[-a]` or `[a-]`) are now correctly handled.
 - Small and fast
 - Portablity: Similar API to stdlib's regex
 
@@ -37,16 +38,7 @@ The implementation of regex_light started from this great article:
 - `\.` `\^` `\$` `\*` `\+` `\?` `\[` `\(` ... escape special characters treating them literals
 
 ### Expressions which don't work
-- `()*` `()+` `()?` ... but I want to make them work
 - `(|)` ... group OR group
 - `\1` `\2` ... backreference in pattern
 
-### Known issues
-```
-assert_match("[-a]", "-", 1, "-");
-assert_match("[a-]", "-", 1, "-");
-assert_match("((ab)cd)e", "abcde", 3, "abcde", "abcd", "ab"); // can not handle nested PAREN
-assert_match("(ab)?c", "c", 2, "c", ""); // ()? doesn't work
-assert_match("(ab)*c", "abababc", 2, "abababc", "ab"); // ()* doesn't work
-assert_match("(ab)+c", "abababc", 2, "abababc", "ab"); // ()+ doesn't work
-```
+

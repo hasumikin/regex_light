@@ -26,12 +26,12 @@ assert_match(char *regexp, char *text, int num, ...)
     if (num != 0) {
       fprintf(stdout, " \e[32;1msucceeded to match\e[m\n");
     } else {
-      fprintf(stderr, " \e[31;1msucceeded to match\e[m\n");
+      fprintf(stderr, " \e[31;1mfailed to match\e[m\n");
       exit_code = 1;
     }
 
     if (num != preg.re_nsub + 1) {
-      printf("\e[31;1m%s\e[m\n", "arg `num` does not correspond to preg.re_nsub");
+      fprintf(stderr, "\e[31;1m%s\e[m\n", "arg `num` does not correspond to preg.re_nsub");
       exit_code = 1;
     }
 
@@ -46,16 +46,16 @@ assert_match(char *regexp, char *text, int num, ...)
       actual[k] = '\0';
       sprintf(message, " %d --- expected: '%s', actual: '%s'", i, expected, actual);
       if (strcmp(expected, actual) == 0) {
-        printf("\e[32;1m%s\e[m\n", message);
+        fprintf(stdout ,"\e[32;1m%s\e[m\n", message);
       } else {
-        printf("\e[31;1m%s\e[m\n", message);
+        fprintf(stderr, "\e[31;1m%s\e[m\n", message);
         exit_code = 1;
       }
     }
     va_end(list);
   } else {
     if (num == 0) {
-      fprintf(stdout, " \e[32;1mfailed to match\e[m\n");
+      fprintf(stdout, " \e[32;1msucceeded  to match\e[m\n");
     } else {
       fprintf(stderr, " \e[31;1mfailed to match\e[m\n");
       exit_code = 1;
@@ -199,7 +199,7 @@ main(void)
     assert_match("\\w+", "_abcd0AZ9v-", 1, "_abcd0AZ9v");
   }
   { /* used to be bugs. now fixed */
-    assert_match("a?", "c", 1, ""); // 
+    assert_match("a?", "c", 1, ""); //
     assert_match("a?", "cd", 1, ""); // ????????
     assert_match("a*", "bd", 1, "");
     assert_match("a*", "bad", 1, "");
@@ -208,9 +208,11 @@ main(void)
     assert_match("^a?", "c", 1, ""); // adding ^ can avoid the problem above
   }
     assert_match("^([0-9_]+)", "1", 2, "1", "1");
-  { /* FIXME */
+  { /* special cases for [ - ] */
     assert_match("[-a]", "-", 1, "-");
     assert_match("[a-]", "-", 1, "-");
+  }
+  { /* grouping operator */
     assert_match("((ab)cd)e", "abcde", 3, "abcde", "abcd", "ab"); // can not handle nested PAREN
     assert_match("(ab)?c", "c", 2, "c", ""); // ()? doesn't work
     assert_match("(ab)*c", "abababc", 2, "abababc", "ab"); // ()* doesn't work

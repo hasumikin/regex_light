@@ -1,5 +1,6 @@
 #include <stdbool.h>
 #include <string.h>
+#include <stdio.h>
 #include "./regex.h"
 
 /*
@@ -56,13 +57,33 @@ typedef struct re_state {
   int nsub_stack_ptr;
 } ReState;
 
-static int match(ReState *rs, ReAtom *regexp, const char *text);
-static int matchstar(ReState *rs, ReAtom *c, ReAtom *regexp, const char *text);
-static int matchhere(ReState *rs, ReAtom *regexp, const char *text);
+static int match(ReState *rs, ReAtom *regexp, const char *text, ReAtom *start);
+static int matchstar(ReState *rs, ReAtom *c, ReAtom *regexp, const char *text, ReAtom *start);
+static int matchhere(ReState *rs, ReAtom *regexp, const char *text, ReAtom *start);
 static int matchone(ReState *rs, ReAtom *p, const char *text);
-static int matchquestion(ReState *rs, ReAtom *regexp, const char *text);
+static int matchquestion(ReState *rs, ReAtom *regexp, const char *text, ReAtom *start);
+static int match_group_question(ReState *rs, ReAtom *lparen, ReAtom *rparen, const char *text, ReAtom *start);
+static int match_group_star(ReState *rs, ReAtom *lparen, ReAtom *rparen, const char *text, ReAtom *start);
+static int match_group_plus(ReState *rs, ReAtom *lparen, ReAtom *rparen, const char *text, ReAtom *start);
+static int match_group_content_once(ReState *rs, ReAtom *lparen, ReAtom *rparen, const char *text, ReAtom *start);
 static int matchchars(ReState *rs, const unsigned char *s, const char *text);
-static int matchbetween(ReState *rs, const unsigned char *s, const char *text);
+static int matchbetween(const unsigned char *s, const char *text);
+static ReAtom* find_rparen(ReAtom *lparen);
+
+static ReAtom*
+find_rparen(ReAtom *lparen) {
+  ReAtom *p = lparen + 1;
+  int level = 1;
+  while (p->type != RE_TYPE_TERM) {
+    if (p->type == RE_TYPE_LPAREN) level++;
+    else if (p->type == RE_TYPE_RPAREN) {
+      level--;
+      if (level == 0) return p;
+    }
+    p++;
+  }
+  return NULL;
+}
 
 /*
  * report nsub
@@ -74,6 +95,9 @@ re_report_nsub(ReState *rs, const char *text)
   int i;
   int mask = (1 << rs->current_re_nsub) | 1;
   for (i = 0; i < rs->nsub_stack_ptr; i++) {
+
+
+
     mask |= (1 << rs->nsub_stack[i]);
   }
   rs->match_index_data[pos] = mask;
@@ -93,84 +117,254 @@ matchone(ReState *rs, ReAtom *p, const char *text)
   if ((p->type == RE_TYPE_LIT && p->ch == text[0]) || (p->type == RE_TYPE_DOT))
     REPORT;
   if (p->type == RE_TYPE_BRACKET) return matchchars(rs, p->ccl, text);
-  return 0;
+  return -1;
 }
 
 static int
-matchquestion(ReState *rs, ReAtom *regexp, const char *text)
+match_group_content_once(ReState *rs, ReAtom *lparen, ReAtom *rparen, const char *text, ReAtom *start)
 {
-  if ((matchone(rs, regexp, text) && matchhere(rs, (regexp + 2), text + 1))
-      || matchhere(rs, (regexp + 2), text)) {
-    return 1; // do not REPORT
-  } else {
-    return 0;
+  int len;
+  // Save state
+  size_t text_len = strlen(rs->original_text_top_addr);
+  int saved_mid[text_len];
+  memcpy(saved_mid, rs->match_index_data, sizeof(int) * text_len);
+
+  int saved_nsub_stack_ptr = rs->nsub_stack_ptr;
+  int saved_current_re_nsub = rs->current_re_nsub;
+  int saved_max_re_nsub = rs->max_re_nsub;
+
+  // Push group state
+  if (rs->nsub_stack_ptr >= 10) return -1;
+  rs->nsub_stack[rs->nsub_stack_ptr++] = rs->current_re_nsub;
+  rs->max_re_nsub++;
+  rs->current_re_nsub = rs->max_re_nsub;
+
+  // Temporarily terminate the group
+  ReType old_type = rparen->type;
+  rparen->type = RE_TYPE_TERM;
+
+  len = matchhere(rs, lparen + 1, text, start);
+
+  rparen->type = old_type; // Restore rparen type
+
+  if (len < 0) {
+    // Restore state on failure
+    rs->nsub_stack_ptr = saved_nsub_stack_ptr;
+    rs->current_re_nsub = saved_current_re_nsub;
+    rs->max_re_nsub = saved_max_re_nsub;
+    memcpy(rs->match_index_data, saved_mid, sizeof(int) * text_len);
+    return -1;
   }
+
+  // Pop group state
+  rs->nsub_stack_ptr--;
+  rs->current_re_nsub = rs->nsub_stack[rs->nsub_stack_ptr];
+
+  return len;
+}
+
+static int
+matchquestion(ReState *rs, ReAtom *regexp, const char *text, ReAtom *start)
+{
+  int len1, len2;
+  // Path 1 (greedy): match one and rest
+  len1 = matchone(rs, regexp, text);
+  if (len1 > 0) {
+    len2 = matchhere(rs, regexp + 2, text + len1, start);
+    if (len2 >= 0) return len1 + len2;
+  }
+  // Path 2: match zero and rest
+  return matchhere(rs, regexp + 2, text, start);
+}
+
+static int
+match_group_question(ReState *rs, ReAtom *lparen, ReAtom *rparen, const char *text, ReAtom *start)
+{
+  int len1, len2;
+  size_t text_len = strlen(rs->original_text_top_addr);
+  int saved_mid[text_len];
+  memcpy(saved_mid, rs->match_index_data, sizeof(int) * text_len);
+
+  // Path 1 (greedy): match group and rest
+  ReType old_type = rparen->type;
+  rparen->type = RE_TYPE_TERM;
+  len1 = matchhere(rs, lparen + 1, text, start);
+  rparen->type = old_type;
+
+  if (len1 >= 0) {
+    len2 = matchhere(rs, rparen + 2, text + len1, start);
+    if (len2 >= 0) return len1 + len2;
+  }
+
+  // Path 2: match zero and rest
+  memcpy(rs->match_index_data, saved_mid, sizeof(int) * text_len);
+  return matchhere(rs, rparen + 2, text, start);
+}
+
+static int
+match_group_star(ReState *rs, ReAtom *lparen, ReAtom *rparen, const char *text, ReAtom *start)
+{
+  int len_g, len_b;
+  size_t text_len = strlen(rs->original_text_top_addr);
+
+  // Path 1 (greedy): Match G once, then recurse
+  // Save state before trying G
+  int saved_mid[text_len];
+  memcpy(saved_mid, rs->match_index_data, sizeof(int) * text_len);
+  int saved_nsub_stack_ptr = rs->nsub_stack_ptr;
+  int saved_current_re_nsub = rs->current_re_nsub;
+  int saved_max_re_nsub = rs->max_re_nsub;
+
+  len_g = match_group_content_once(rs, lparen, rparen, text, start);
+  if (len_g > 0) {
+    len_b = match_group_star(rs, lparen, rparen, text + len_g, start);
+    if (len_b >= 0) return len_g + len_b;
+  }
+
+  // If Path 1 failed, restore state and try Path 2
+  rs->nsub_stack_ptr = saved_nsub_stack_ptr;
+  rs->current_re_nsub = saved_current_re_nsub;
+  rs->max_re_nsub = saved_max_re_nsub;
+  memcpy(rs->match_index_data, saved_mid, sizeof(int) * text_len);
+
+  // Path 2: Match B (0 G's)
+  return matchhere(rs, rparen + 2, text, start);
+}
+
+static int
+match_group_plus(ReState *rs, ReAtom *lparen, ReAtom *rparen, const char *text, ReAtom *start)
+{
+  int len_g, len_b;
+  size_t text_len = strlen(rs->original_text_top_addr);
+
+  // Path 1: Match G once
+  // Save state before trying G
+  int saved_mid[text_len];
+  memcpy(saved_mid, rs->match_index_data, sizeof(int) * text_len);
+  int saved_nsub_stack_ptr = rs->nsub_stack_ptr;
+  int saved_current_re_nsub = rs->current_re_nsub;
+  int saved_max_re_nsub = rs->max_re_nsub;
+
+  len_g = match_group_content_once(rs, lparen, rparen, text, start);
+  if (len_g > 0) {
+    // If G matched, try to match (G)*B from the new position
+    len_b = match_group_star(rs, lparen, rparen, text + len_g, start);
+    if (len_b >= 0) return len_g + len_b;
+  }
+
+  // If G didn't match, or (G)*B failed, restore state and return failure
+  rs->nsub_stack_ptr = saved_nsub_stack_ptr;
+  rs->current_re_nsub = saved_current_re_nsub;
+  rs->max_re_nsub = saved_max_re_nsub;
+  memcpy(rs->match_index_data, saved_mid, sizeof(int) * text_len);
+
+  return -1;
 }
 
 /* matchhere: search for regexp at beginning of text */
 static int
-matchhere(ReState *rs, ReAtom *regexp, const char *text)
+matchhere(ReState *rs, ReAtom *regexp, const char *text, ReAtom *start)
 {
-  do {
-    if (regexp->type == RE_TYPE_TERM)
-      return 1; // do not REPORT;
-    if (regexp->type == RE_TYPE_LPAREN) {
-      if (rs->nsub_stack_ptr >= 10) return 0;
-      rs->nsub_stack[rs->nsub_stack_ptr++] = rs->current_re_nsub;
-      rs->max_re_nsub++;
-      rs->current_re_nsub = rs->max_re_nsub;
-      return matchhere(rs, (regexp + 1), text);
+  int len;
+  if (regexp->type == RE_TYPE_TERM) return 0;
+
+  if ((regexp + 1)->type == RE_TYPE_QUESTION)
+    return matchquestion(rs, regexp, text, start);
+  if ((regexp + 1)->type == RE_TYPE_STAR)
+    return matchstar(rs, regexp, (regexp + 2), text, start);
+  if ((regexp + 1)->type == RE_TYPE_PLUS) {
+    int len1 = matchone(rs, regexp, text);
+    if (len1 < 0) return -1;
+    int len2 = matchstar(rs, regexp, (regexp + 2), text + len1, start);
+    if (len2 < 0) return -1;
+    return len1 + len2;
+  }
+
+  if (regexp->type == RE_TYPE_END && (regexp + 1)->type == RE_TYPE_TERM)
+    return text[0] == '\0' ? 0 : -1;
+
+  if (regexp->type == RE_TYPE_LPAREN) {
+    ReAtom *rparen = find_rparen(regexp);
+    if (rparen) {
+      if ((rparen + 1)->type == RE_TYPE_QUESTION)
+        return match_group_question(rs, regexp, rparen, text, start);
+      if ((rparen + 1)->type == RE_TYPE_STAR)
+        return match_group_star(rs, regexp, rparen, text, start);
+      if ((rparen + 1)->type == RE_TYPE_PLUS)
+        return match_group_plus(rs, regexp, rparen, text, start);
     }
-    if (regexp->type == RE_TYPE_RPAREN) {
-      if (rs->nsub_stack_ptr <= 0) return 0;
-      rs->current_re_nsub = rs->nsub_stack[--rs->nsub_stack_ptr];
-      return matchhere(rs, (regexp + 1), text);
+    int len, len2;
+    if (rs->nsub_stack_ptr >= 10) return -1;
+    rs->nsub_stack[rs->nsub_stack_ptr++] = rs->current_re_nsub;
+    rs->max_re_nsub++;
+    rs->current_re_nsub = rs->max_re_nsub;
+
+    if (!rparen) return -1;
+
+    ReType old_type = rparen->type;
+    rparen->type = RE_TYPE_TERM;
+
+    len = matchhere(rs, regexp + 1, text, start);
+
+    rparen->type = old_type;
+
+    if (len < 0) {
+      rs->max_re_nsub--;
+      rs->nsub_stack_ptr--;
+      rs->current_re_nsub = rs->nsub_stack[rs->nsub_stack_ptr];
+      return -1;
     }
-    if ((regexp + 1)->type == RE_TYPE_QUESTION)
-      return matchquestion(rs, regexp, text);
-    if ((regexp + 1)->type == RE_TYPE_STAR)
-      return matchstar(rs, regexp, (regexp + 2), text);
-    if ((regexp + 1)->type == RE_TYPE_PLUS)
-      return matchone(rs, regexp, text) && matchstar(rs, regexp, (regexp + 2), text + 1);
-    if (regexp->type == RE_TYPE_END && (regexp + 1)->type == RE_TYPE_TERM)
-      return text[0] == '\0';
-    if (text[0] != '\0' && (regexp->type == RE_TYPE_DOT || (regexp->type == RE_TYPE_LIT && regexp->ch == text[0]))) {
-      REPORT_WITHOUT_RETURN;
-      return matchhere(rs, (regexp + 1), text + 1);
+
+    rs->nsub_stack_ptr--;
+    rs->current_re_nsub = rs->nsub_stack[rs->nsub_stack_ptr];
+
+    len2 = matchhere(rs, rparen + 1, text + len, start);
+    if (len2 < 0) return -1;
+
+    return len + len2;
+  }
+
+  if (text[0] != '\0') {
+    len = matchone(rs, regexp, text);
+    if (len > 0) {
+      int next_len = matchhere(rs, regexp + 1, text + len, start);
+      if (next_len >= 0) {
+        return len + next_len;
+      }
     }
-  } while (text[0] != '\0' && matchone(rs, regexp++, text++));
-  return 0;
+  }
+  return -1;
 }
 
 static int
-matchstar(ReState *rs, ReAtom *c, ReAtom *regexp, const char *text_)
+matchstar(ReState *rs, ReAtom *c, ReAtom *regexp, const char *text, ReAtom *start)
 {
-  char *text;
-  /* leftmost && longest */
-  for (text = (char *)text_;
-       text[0] != '\0' && (
-         (c->type == RE_TYPE_LIT && text[0] == c->ch) ||
-         (c->type == RE_TYPE_BRACKET && matchchars(rs, c->ccl, text)) ||
-         c->type == RE_TYPE_DOT
-       );
-       text++)
-    REPORT_WITHOUT_RETURN;
-  do {  /* * matches zero or more */
-    if (matchhere(rs, regexp, text))
-      return 1; //REPORT;
-  } while (text-- > text_);
-  return 0;
+  const char *t;
+  int len;
+
+  for (t = text; *t != '\0' && matchone(rs, c, t) > 0; t++)
+    ;
+
+  for (;; t--) {
+    len = matchhere(rs, regexp, t, start);
+    if (len >= 0) {
+      return (t - text) + len;
+    }
+    if (t == text) break;
+  }
+
+  return -1;
 }
 
 static int
-matchbetween(ReState *rs, const unsigned char* s, const char *text)
+matchbetween(const unsigned char* s, const char *text)
 {
   if ((text[0] != '-') && (s[0] != '\0') && (s[0] != '-') &&
       (s[1] == '-') && (s[1] != '\0') &&
       (s[2] != '\0') && ((text[0] >= s[0]) && (text[0] <= s[2]))) {
-    REPORT;
+    return 1;
   } else {
-    return 0;
+    return -1;
   }
 }
 
@@ -178,28 +372,41 @@ static int
 matchchars(ReState *rs, const unsigned char* s, const char *text)
 {
   do {
-    if (matchbetween(rs, s, text)) {
-      REPORT;
-    } else if (s[0] == '\\') {
+    // Check for ranges first
+    if (s[0] != '\0' && s[1] == '-' && s[2] != '\0') { // Potential range
+      if (matchbetween(s, text) > 0) {
+        REPORT;
+        return 1;
+      }
+      s += 2; // Skip the range (e.g., 'a-z')
+    }
+    // Handle escaped characters
+    else if (s[0] == '\\') {
       s += 1;
       if (text[0] == s[0]) {
         REPORT;
+        return 1;
       }
-    } else if (text[0] == s[0]) {
+    }
+    // Handle literal characters
+    else if (text[0] == s[0]) {
       REPORT;
+      return 1;
     }
   } while (*s++ != '\0');
-  return 0;
+  return -1;
 }
 
 static int
-match(ReState *rs, ReAtom *regexp, const char *text)
+match(ReState *rs, ReAtom *regexp, const char *text, ReAtom *start)
 {
-  if (regexp->type == RE_TYPE_BEGIN)
-    return (matchhere(rs, (regexp + 1), text));
+  if (regexp->type == RE_TYPE_BEGIN) {
+    if (matchhere(rs, (regexp + 1), text, start) >= 0) return 0;
+    else return -1;
+  }
   do {    /* must look even if string is empty */
-    if (matchhere(rs, regexp, text)) {
-      return 1;
+    if (matchhere(rs, regexp, text, start) >= 0) {
+      return 0;
     } else {
       /* reset match_index_data */
       memset(rs->match_index_data, 0, sizeof(int) * strlen(text));
@@ -208,7 +415,7 @@ match(ReState *rs, ReAtom *regexp, const char *text)
       rs->nsub_stack_ptr = 0;
     }
   } while (*text++ != '\0');
-  return 0;
+  return -1;
 }
 
 void
@@ -255,7 +462,7 @@ regexec(regex_t *preg, const char *text, size_t nmatch, regmatch_t *pmatch, int 
   rs.current_re_nsub = 0;
   rs.max_re_nsub = 0;
   rs.nsub_stack_ptr = 0;
-  if (match(&rs, preg->atoms, text)) {
+  if (match(&rs, preg->atoms, text, preg->atoms) >= 0) {
     set_match_data(&rs, nmatch, pmatch, len);
     return 0; /* success */
   } else {
