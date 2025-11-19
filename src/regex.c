@@ -51,7 +51,9 @@ typedef struct re_state {
   char *original_text_top_addr;
   int current_re_nsub;
   int max_re_nsub;
-  signed char *match_index_data;
+  int *match_index_data;
+  int nsub_stack[10];
+  int nsub_stack_ptr;
 } ReState;
 
 static int match(ReState *rs, ReAtom *regexp, const char *text);
@@ -69,7 +71,12 @@ static void
 re_report_nsub(ReState *rs, const char *text)
 {
   int pos = (int)((long)text - (long)rs->original_text_top_addr);
-  rs->match_index_data[pos] = rs->current_re_nsub;
+  int i;
+  int mask = (1 << rs->current_re_nsub) | 1;
+  for (i = 0; i < rs->nsub_stack_ptr; i++) {
+    mask |= (1 << rs->nsub_stack[i]);
+  }
+  rs->match_index_data[pos] = mask;
 }
 #define REPORT_WITHOUT_RETURN (re_report_nsub(rs, text))
 #define REPORT \
@@ -108,12 +115,15 @@ matchhere(ReState *rs, ReAtom *regexp, const char *text)
     if (regexp->type == RE_TYPE_TERM)
       return 1; // do not REPORT;
     if (regexp->type == RE_TYPE_LPAREN) {
+      if (rs->nsub_stack_ptr >= 10) return 0;
+      rs->nsub_stack[rs->nsub_stack_ptr++] = rs->current_re_nsub;
       rs->max_re_nsub++;
       rs->current_re_nsub = rs->max_re_nsub;
       return matchhere(rs, (regexp + 1), text);
     }
     if (regexp->type == RE_TYPE_RPAREN) {
-      rs->current_re_nsub = 0; /* Nested paren doesn't work. eg) `ab(c(de))fg` */
+      if (rs->nsub_stack_ptr <= 0) return 0;
+      rs->current_re_nsub = rs->nsub_stack[--rs->nsub_stack_ptr];
       return matchhere(rs, (regexp + 1), text);
     }
     if ((regexp + 1)->type == RE_TYPE_QUESTION)
@@ -176,11 +186,7 @@ matchchars(ReState *rs, const unsigned char* s, const char *text)
         REPORT;
       }
     } else if (text[0] == s[0]) {
-      if (text[0] == '-') {
-        return (s[-1] == '\0') || (s[1] == '\0');
-      } else {
-        REPORT;
-      }
+      REPORT;
     }
   } while (*s++ != '\0');
   return 0;
@@ -196,9 +202,10 @@ match(ReState *rs, ReAtom *regexp, const char *text)
       return 1;
     } else {
       /* reset match_index_data */
-      memset(rs->match_index_data, -1, strlen(text));
+      memset(rs->match_index_data, 0, sizeof(int) * strlen(text));
       rs->current_re_nsub = 0;
       rs->max_re_nsub = 0;
+      rs->nsub_stack_ptr = 0;
     }
   } while (*text++ != '\0');
   return 0;
@@ -207,26 +214,30 @@ match(ReState *rs, ReAtom *regexp, const char *text)
 void
 set_match_data(ReState *rs, size_t nmatch, regmatch_t *pmatch, size_t len)
 {
-  int i;
+  int i, j;
   for (i = 0; i < nmatch; i++) {
     (pmatch + i)->rm_so = -1;
     (pmatch + i)->rm_eo = -1;
   }
   bool scanning = false;
   for (i = len - 1; i > -1; i--) {
-    if (rs->match_index_data[i] < 0) {
+    if (rs->match_index_data[i] == 0) {
       if (scanning) break;
       continue;
     } else {
       scanning = true;
     }
-    if (pmatch->rm_eo < 0)
-      pmatch->rm_eo = i + 1;
-    if ( (pmatch + rs->match_index_data[i])->rm_eo < 0 )
-      (pmatch + rs->match_index_data[i])->rm_eo = i + 1;
-    (pmatch + rs->match_index_data[i])->rm_so = i;
+    for (j = 0; j < nmatch; j++) {
+      if (rs->match_index_data[i] & (1 << j)) {
+        if ((pmatch + j)->rm_eo < 0)
+          (pmatch + j)->rm_eo = i + 1;
+        (pmatch + j)->rm_so = i;
+      }
+    }
   }
-  pmatch[0].rm_so = i + 1;
+  if (scanning) {
+    pmatch[0].rm_so = i + 1;
+  }
 }
 
 /*
@@ -238,11 +249,12 @@ regexec(regex_t *preg, const char *text, size_t nmatch, regmatch_t *pmatch, int 
   ReState rs;
   rs.original_text_top_addr = (void *)text;
   size_t len = strlen(text);
-  signed char mid[len];
+  int mid[len];
   rs.match_index_data = mid;
-  memset(rs.match_index_data, -1, len);
+  memset(rs.match_index_data, 0, sizeof(int) * len);
   rs.current_re_nsub = 0;
   rs.max_re_nsub = 0;
+  rs.nsub_stack_ptr = 0;
   if (match(&rs, preg->atoms, text)) {
     set_match_data(&rs, nmatch, pmatch, len);
     return 0; /* success */

@@ -208,7 +208,6 @@ main(void)
     assert_match("^a?", "c", 1, ""); // adding ^ can avoid the problem above
   }
     assert_match("^([0-9_]+)", "1", 2, "1", "1");
-  return exit_code;
   { /* FIXME */
     assert_match("[-a]", "-", 1, "-");
     assert_match("[a-]", "-", 1, "-");
@@ -217,4 +216,5 @@ main(void)
     assert_match("(ab)*c", "abababc", 2, "abababc", "ab"); // ()* doesn't work
     assert_match("(ab)+c", "abababc", 2, "abababc", "ab"); // ()+ doesn't work
   }
+  return exit_code;
 }
