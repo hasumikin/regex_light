@@ -114,6 +114,7 @@ re_report_nsub(ReState *rs, const char *text)
 static int
 matchone(ReState *rs, ReAtom *p, const char *text)
 {
+  if (text[0] == '\0') return -1;
   if ((p->type == RE_TYPE_LIT && p->ch == text[0]) || (p->type == RE_TYPE_DOT))
     REPORT;
   if (p->type == RE_TYPE_BRACKET) return matchchars(rs, p->ccl, text);
@@ -371,6 +372,7 @@ matchbetween(const unsigned char* s, const char *text)
 static int
 matchchars(ReState *rs, const unsigned char* s, const char *text)
 {
+  if (text[0] == '\0') return -1;
   do {
     // Check for ranges first
     if (s[0] != '\0' && s[1] == '-' && s[2] != '\0') { // Potential range
