@@ -212,11 +212,34 @@ main(void)
     assert_match("[-a]", "-", 1, "-");
     assert_match("[a-]", "-", 1, "-");
   }
+  { /* {n}, {n,m}, {n,} */
+    assert_match("a{3}", "aaa", 1, "aaa");
+    assert_match("a{3}", "aaaa", 1, "aaa");
+    assert_match("a{3}", "aa", 0);
+    assert_match("a{4}", "xaaaay", 1, "aaaa");
+    assert_match("a{2,4}", "a", 0);
+    assert_match("a{2,4}", "aa", 1, "aa");
+    assert_match("a{2,4}", "aaa", 1, "aaa");
+    assert_match("a{2,4}", "aaaa", 1, "aaaa");
+    assert_match("a{2,4}", "aaaaa", 1, "aaaa");
+    assert_match("a{2,}b", "aab", 1, "aab");
+    assert_match("a{2,}b", "aaaab", 1, "aaaab");
+    assert_match("a{2,}b", "ab", 0);
+    assert_match("[0-9]{3}", "abc123def", 1, "123");
+    assert_match("\\d{2}", "a99b", 1, "99");
+    assert_match("a{1}", "a", 1, "a");
+    assert_match("a{1}", "b", 0);
+  }
   { /* grouping operator */
     assert_match("((ab)cd)e", "abcde", 3, "abcde", "abcd", "ab"); // can not handle nested PAREN
     assert_match("(ab)?c", "c", 2, "c", ""); // ()? doesn't work
     assert_match("(ab)*c", "abababc", 2, "abababc", "ab"); // ()* doesn't work
     assert_match("(ab)+c", "abababc", 2, "abababc", "ab"); // ()+ doesn't work
+    assert_match("(ab){3}c", "abababc", 2, "abababc", "ab");
+    assert_match("(ab){3}c", "ababc", 0);
+    assert_match("(ab){2,3}c", "ababc", 2, "ababc", "ab");
+    assert_match("(ab){2,3}c", "abababc", 2, "abababc", "ab");
+    assert_match("(ab){2,}c", "abababababc", 2, "abababababc", "ab");
   }
   return exit_code;
 }

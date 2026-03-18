@@ -30,6 +30,7 @@ typedef enum {
   RE_TYPE_QUESTION, // ?
   RE_TYPE_STAR,     // *
   RE_TYPE_PLUS,     // +
+  RE_TYPE_REPEAT,   // {n}, {n,m}, {n,}
   RE_TYPE_BEGIN,    // ^
   RE_TYPE_END,      // $
   RE_TYPE_BRACKET,  // [ ]
@@ -45,6 +46,7 @@ typedef struct re_atom {
   union {
     unsigned char ch;   // literal in RE_TYPE_LIT
     unsigned char *ccl; // pointer to content in [ ] RE_TYPE_BRACKET
+    struct { uint8_t min; uint8_t max; } repeat; // RE_TYPE_REPEAT: max==0 means unbounded
   };
 } ReAtom;
 
@@ -65,6 +67,8 @@ static int matchquestion(ReState *rs, ReAtom *regexp, const char *text, ReAtom *
 static int match_group_question(ReState *rs, ReAtom *lparen, ReAtom *rparen, const char *text, ReAtom *start);
 static int match_group_star(ReState *rs, ReAtom *lparen, ReAtom *rparen, const char *text, ReAtom *start);
 static int match_group_plus(ReState *rs, ReAtom *lparen, ReAtom *rparen, const char *text, ReAtom *start);
+static int matchrepeat(ReState *rs, ReAtom *c, ReAtom *regexp, const char *text, ReAtom *start);
+static int match_group_repeat(ReState *rs, ReAtom *lparen, ReAtom *rparen, ReAtom *repeat_atom, const char *text, ReAtom *start);
 static int match_group_content_once(ReState *rs, ReAtom *lparen, ReAtom *rparen, const char *text, ReAtom *start);
 static int matchchars(ReState *rs, const unsigned char *s, const char *text);
 static int matchbetween(const unsigned char *s, const char *text);
@@ -280,6 +284,8 @@ matchhere(ReState *rs, ReAtom *regexp, const char *text, ReAtom *start)
     if (len2 < 0) return -1;
     return len1 + len2;
   }
+  if ((regexp + 1)->type == RE_TYPE_REPEAT)
+    return matchrepeat(rs, regexp, regexp + 1, text, start);
 
   if (regexp->type == RE_TYPE_END && (regexp + 1)->type == RE_TYPE_TERM)
     return text[0] == '\0' ? 0 : -1;
@@ -293,6 +299,8 @@ matchhere(ReState *rs, ReAtom *regexp, const char *text, ReAtom *start)
         return match_group_star(rs, regexp, rparen, text, start);
       if ((rparen + 1)->type == RE_TYPE_PLUS)
         return match_group_plus(rs, regexp, rparen, text, start);
+      if ((rparen + 1)->type == RE_TYPE_REPEAT)
+        return match_group_repeat(rs, regexp, rparen, rparen + 1, text, start);
     }
     int len, len2;
     if (rs->nsub_stack_ptr >= 10) return -1;
@@ -354,6 +362,127 @@ matchstar(ReState *rs, ReAtom *c, ReAtom *regexp, const char *text, ReAtom *star
     if (t == text) break;
   }
 
+  return -1;
+}
+
+static int
+matchrepeat(ReState *rs, ReAtom *c, ReAtom *regexp, const char *text, ReAtom *start)
+{
+  /* regexp points to the RE_TYPE_REPEAT atom */
+  uint8_t rmin = regexp->repeat.min;
+  uint8_t rmax = regexp->repeat.max; /* 0 means unbounded */
+  const char *t = text;
+  int i, len;
+
+  /* Match mandatory minimum */
+  for (i = 0; i < rmin; i++) {
+    if (matchone(rs, c, t) < 1) return -1;
+    t++;
+  }
+
+  if (rmax == 0) {
+    /* {n,} - unbounded: greedy match as many as possible */
+    const char *end = t;
+    while (*end != '\0' && matchone(rs, c, end) > 0) end++;
+    /* Try from longest to shortest */
+    while (end >= t) {
+      len = matchhere(rs, regexp + 1, end, start);
+      if (len >= 0) return (end - text) + len;
+      if (end == t) break;
+      end--;
+    }
+    return -1;
+  }
+
+  /* {n,m} or {n} - greedy match up to max */
+  {
+    const char *end = t;
+    int count = rmin;
+    while (count < rmax && *end != '\0' && matchone(rs, c, end) > 0) {
+      end++;
+      count++;
+    }
+    /* Try from longest to shortest (greedy) */
+    while (end >= t) {
+      len = matchhere(rs, regexp + 1, end, start);
+      if (len >= 0) return (end - text) + len;
+      if (end == t) break;
+      end--;
+    }
+  }
+  return -1;
+}
+
+static int
+match_group_repeat(ReState *rs, ReAtom *lparen, ReAtom *rparen, ReAtom *repeat_atom, const char *text, ReAtom *start)
+{
+  uint8_t rmin = repeat_atom->repeat.min;
+  uint8_t rmax = repeat_atom->repeat.max; /* 0 means unbounded */
+  int i, len_g, len, count;
+  size_t text_len = strlen(rs->original_text_top_addr);
+
+  int saved_mid[text_len];
+  memcpy(saved_mid, rs->match_index_data, sizeof(int) * text_len);
+  int saved_nsub_stack_ptr = rs->nsub_stack_ptr;
+  int saved_current_re_nsub = rs->current_re_nsub;
+  int saved_max_re_nsub = rs->max_re_nsub;
+
+  /*
+   * Greedy: collect positions after each group match.
+   * positions[i] = cumulative length after matching i groups.
+   * Max possible matches limited to 255 (uint8_t max).
+   */
+  int limit = (rmax == 0) ? 255 : rmax;
+  int positions[limit + 1];
+  positions[0] = 0;
+  count = 0;
+
+  const char *t = text;
+  while (count < limit) {
+    len_g = match_group_content_once(rs, lparen, rparen, t, start);
+    if (len_g < 1) break;
+    count++;
+    positions[count] = positions[count - 1] + len_g;
+    t += len_g;
+  }
+
+  /* Not enough matches for minimum */
+  if (count < rmin) {
+    rs->nsub_stack_ptr = saved_nsub_stack_ptr;
+    rs->current_re_nsub = saved_current_re_nsub;
+    rs->max_re_nsub = saved_max_re_nsub;
+    memcpy(rs->match_index_data, saved_mid, sizeof(int) * text_len);
+    return -1;
+  }
+
+  /* Try from longest (greedy) to shortest (minimum) */
+  for (i = count; i >= rmin; i--) {
+    /* Restore state before trying rest */
+    rs->nsub_stack_ptr = saved_nsub_stack_ptr;
+    rs->current_re_nsub = saved_current_re_nsub;
+    rs->max_re_nsub = saved_max_re_nsub;
+    memcpy(rs->match_index_data, saved_mid, sizeof(int) * text_len);
+
+    /* Re-match exactly i groups to rebuild state */
+    t = text;
+    int j;
+    bool ok = true;
+    for (j = 0; j < i; j++) {
+      len_g = match_group_content_once(rs, lparen, rparen, t, start);
+      if (len_g < 1) { ok = false; break; }
+      t += len_g;
+    }
+    if (!ok) continue;
+
+    len = matchhere(rs, repeat_atom + 1, text + positions[i], start);
+    if (len >= 0) return positions[i] + len;
+  }
+
+  /* All attempts failed */
+  rs->nsub_stack_ptr = saved_nsub_stack_ptr;
+  rs->current_re_nsub = saved_current_re_nsub;
+  rs->max_re_nsub = saved_max_re_nsub;
+  memcpy(rs->match_index_data, saved_mid, sizeof(int) * text_len);
   return -1;
 }
 
@@ -524,6 +653,43 @@ regcomp(regex_t *preg, const char *pattern, int _cflags)
         case '+':
           atoms->type = RE_TYPE_PLUS;
           break;
+        case '{': {
+          /* Parse {n}, {n,}, {n,m} */
+          uint8_t rmin = 0, rmax = 0;
+          bool has_comma = false;
+          char *p = pattern_index + 1;
+          while (*p >= '0' && *p <= '9') {
+            rmin = rmin * 10 + (*p - '0');
+            p++;
+          }
+          if (*p == ',') {
+            has_comma = true;
+            p++;
+            if (*p >= '0' && *p <= '9') {
+              while (*p >= '0' && *p <= '9') {
+                rmax = rmax * 10 + (*p - '0');
+                p++;
+              }
+            }
+            /* else: {n,} => rmax stays 0 meaning unbounded */
+          } else {
+            /* {n} => exact: min == max */
+            rmax = rmin;
+          }
+          if (*p == '}') {
+            atoms->type = RE_TYPE_REPEAT;
+            if (!dry_run) {
+              atoms->repeat.min = rmin;
+              atoms->repeat.max = has_comma && rmax == 0 ? 0 : rmax;
+            }
+            pattern_index = p; /* will be incremented at end of loop */
+          } else {
+            /* Not a valid quantifier, treat { as literal */
+            atoms->type = RE_TYPE_LIT;
+            atoms->ch = '{';
+          }
+          break;
+        }
         case '^':
           atoms->type = RE_TYPE_BEGIN;
           break;

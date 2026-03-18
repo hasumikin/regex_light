@@ -8,7 +8,7 @@ The implementation of regex_light started from this great article:
 [https://www.cs.princeton.edu/courses/archive/spr09/cos333/beautiful.html](https://www.cs.princeton.edu/courses/archive/spr09/cos333/beautiful.html)
 
 ### Features
-- `()`: You can make parenthesized groups for backward reference, including nested groups and quantifiers (`?`, `*`, `+`).
+- `()`: You can make parenthesized groups for backward reference, including nested groups and quantifiers (`?`, `*`, `+`, `{n}`, `{n,m}`, `{n,}`).
 - Character class (`[]`) literal hyphens (e.g., `[-a]` or `[a-]`) are now correctly handled.
 - Small and fast
 - Portablity: Similar API to stdlib's regex
@@ -33,9 +33,12 @@ The implementation of regex_light started from this great article:
 - `*` ... zero or more of previous character
 - `+` ... one or more of previous character
 - `?` ... zero or one of previous character
+- `{n}` ... exactly n of previous character or group
+- `{n,m}` ... between n and m of previous character or group (greedy)
+- `{n,}` ... n or more of previous character or group (greedy)
 - `[-]` ... specified characters, between the two characters
 - `()` ... group for backward reference in regmatch_t
-- `\.` `\^` `\$` `\*` `\+` `\?` `\[` `\(` ... escape special characters treating them literals
+- `\.` `\^` `\$` `\*` `\+` `\?` `\[` `\(` `\{` ... escape special characters treating them literals
 
 ### Expressions which don't work
 - `(|)` ... group OR group
