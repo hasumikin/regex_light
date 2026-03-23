@@ -1,7 +1,11 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdarg.h>
+#include <stdlib.h>
 #include "src/regex.h"
+
+static void *libc_alloc(void *ctx, size_t size) { (void)ctx; return malloc(size); }
+static void libc_free(void *ctx, void *ptr) { (void)ctx; free(ptr); }
 
 int exit_code = 0;
 
@@ -15,7 +19,7 @@ assert_match(char *regexp, char *text, int num, ...)
   int i, j, k;
 
   regex_t preg;
-  regcomp(&preg, regexp, REG_EXTENDED|REG_NEWLINE);
+  regcomp(&preg, regexp, REG_EXTENDED|REG_NEWLINE, NULL, libc_alloc, libc_free);
   regmatch_t pmatch[preg.re_nsub + 1]; // number of subexpression + 1
 
   char not[] = " NOT ";

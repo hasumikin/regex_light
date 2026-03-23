@@ -1,7 +1,7 @@
 CC := gcc
 CC_ARM := arm-linux-gnueabihf-gcc
 LDFLAGS +=
-CFLAGS += -Wall -DREGEX_USE_ALLOC_LIBC
+CFLAGS += -Wall
 TESTS := build/host/debug/test build/host/production/test
 TESTS_ARM := build/arm/debug/test build/arm/production/test
 SRCS = src/regex.c

@@ -2,12 +2,19 @@
 #define REGEX_LIGHT_H_
 
 #include <stdint.h>
+#include <stddef.h>
 
 typedef struct re_atom ReAtom;
+
+typedef void *(*regex_alloc_fn_t)(void *ctx, size_t size);
+typedef void (*regex_free_fn_t)(void *ctx, void *ptr);
 
 typedef struct {
   size_t re_nsub;  // number of parenthesized subexpressions ( )
   ReAtom *atoms;
+  void *alloc_ctx;
+  regex_alloc_fn_t alloc_fn;
+  regex_free_fn_t free_fn;
 } regex_t;
 
 typedef struct {
@@ -25,12 +32,9 @@ typedef struct {
 #define	REG_PEND        0040
 #define	REG_DUMP        0200
 
-int regcomp(regex_t *preg, const char *pattern, int _cflags);
+int regcomp(regex_t *preg, const char *pattern, int cflags,
+            void *alloc_ctx, regex_alloc_fn_t alloc_fn, regex_free_fn_t free_fn);
 void regfree(regex_t *preg);
 int regexec(regex_t *preg, const char *string, size_t nmatch, regmatch_t *pmatch, int eflags);
-
-#ifndef REGEX_USE_ALLOC_LIBC
-void RegexSetAllocProcs(void *(*mallocProc)(size_t), void (*freeProc)(void *));
-#endif
 
 #endif /* !REGEX_LIGHT_H_ */

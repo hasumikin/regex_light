@@ -3,25 +3,6 @@
 #include <stdio.h>
 #include "./regex.h"
 
-/*
- * You can use stdlib's malloc() and free()
- *   CFLAGS=-DREGEX_USE_ALLOC_LIBC make
- */
-#ifndef REGEX_USE_ALLOC_LIBC
-  #define  REGEX_ALLOC(size)  RegexAllocProc(size) /* override */
-  #define  REGEX_FREE(ptr)    RegexFreeProc(ptr)   /* override */
-  void *(* RegexAllocProc)(size_t);
-  void (* RegexFreeProc)(void *);
-  void RegexSetAllocProcs(void *(*allocProcPtr)(size_t), void (*freeProcPtr)(void *))
-  {
-    RegexAllocProc = allocProcPtr;
-    RegexFreeProc = freeProcPtr;
-  }
-#else
-  #include <stdlib.h>
-  #define  REGEX_ALLOC(size)  malloc(size)
-  #define  REGEX_FREE(ptr)    free(ptr)
-#endif /* REGEX_USE_ALLOC_LIBC */
 
 typedef enum {
   RE_TYPE_TERM = 0, // sentinel of finishing expression. It must be 0
@@ -624,9 +605,13 @@ gen_ccl(ReAtom *atom, unsigned char **ccl, const char *snippet, size_t len, bool
 #define REGEX_DEF_s " \t\f\r\n"
 #define REGEX_DEF_d "0-9"
 int
-regcomp(regex_t *preg, const char *pattern, int _cflags)
+regcomp(regex_t *preg, const char *pattern, int _cflags,
+        void *alloc_ctx, regex_alloc_fn_t alloc_fn, regex_free_fn_t free_fn)
 {
-  ReAtom *atoms = REGEX_ALLOC(sizeof(ReAtom));
+  preg->alloc_ctx = alloc_ctx;
+  preg->alloc_fn = alloc_fn;
+  preg->free_fn = free_fn;
+  ReAtom *atoms = preg->alloc_fn(preg->alloc_ctx, sizeof(ReAtom));
   preg->re_nsub = 0;
   size_t ccl_len = 0; // total length of ccl(s)
   size_t len;
@@ -755,8 +740,8 @@ regcomp(regex_t *preg, const char *pattern, int _cflags)
     if (dry_run) {
       dry_run = false;
       pattern_index = (char *)pattern;
-      REGEX_FREE(atoms);
-      atoms = (ReAtom *)REGEX_ALLOC(sizeof(ReAtom) * atoms_count + ccl_len);
+      preg->free_fn(preg->alloc_ctx, atoms);
+      atoms = (ReAtom *)preg->alloc_fn(preg->alloc_ctx, sizeof(ReAtom) * atoms_count + ccl_len);
       ccl = (unsigned char *)(atoms + atoms_count);
     } else {
       atoms->type = RE_TYPE_TERM;
@@ -773,6 +758,6 @@ regcomp(regex_t *preg, const char *pattern, int _cflags)
 void
 regfree(regex_t *preg)
 {
-  REGEX_FREE(preg->atoms);
+  preg->free_fn(preg->alloc_ctx, preg->atoms);
 }
 
